@@ -1,0 +1,21 @@
+# NPM Ignore
+
+# Source files
+src/
+examples/
+tsconfig.json
+*.log
+.env
+.env.example
+# Test files (if you add them later)
+tests/
+
+# Build artifacts not meant for direct inclusion (dist is handled by "files" in package.json)
+
+# IDE and OS specific
+.vscode/
+.idea/
+*.DS_Store
+
+# Other dev files
+prd.md

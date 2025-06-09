@@ -18,6 +18,7 @@ sample_result/
 .fleet
 .idea
 .vscode
+*.tgz
 
 # Local env files
 .env

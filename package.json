@@ -15,10 +15,22 @@
     "outlook",
     "imap",
     "parser",
-    "node"
+    "node",
+    "typescript",
+    "attachments",
+    "unifier",
+    "fetcher"
   ],
-  "author": "Your Name <you@example.com>",
+  "author": "Snehal Maheshwari",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/snehal96/unimail.git"
+  },
+  "homepage": "https://github.com/snehal96/unimail#",
+  "bugs": {
+    "url": "https://github.com/snehal96/unimail/issues"
+  },
   "devDependencies": {
     "@types/express": "^5.0.3",
     "@types/mailparser": "^3.4.0",
@@ -33,6 +45,8 @@
     "open": "^10.1.2"
   },
   "files": [
-    "dist"
+    "dist",
+    "LICENSE",
+    "README.md"
   ]
 }
