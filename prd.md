@@ -1,6 +1,6 @@
 **Product Requirements Document (PRD)**
 
-**Project Name:** Inbox Unifier
+**Project Name:** Unimail
 **Tagline:** "Unified email fetching & document extraction layer for modern web apps"
 
 ---
@@ -74,7 +74,7 @@ To build an open-source Node.js library that abstracts email integration across 
                      │
                      ▼
             ┌────────────────────┐
-            │ InboxUnifier SDK   │
+            │ Unimail SDK   │
             ├────────────────────┤
             │ GmailAdapter       │
             │ OutlookAdapter     │
@@ -99,7 +99,7 @@ To build an open-source Node.js library that abstracts email integration across 
 
 ### 6. **Success Criteria**
 
-* One-line install: `npm install inbox-unifier`
+* One-line install: `npm install unimail`
 * Fetch + parse from Gmail in <10 lines of code
 * 500+ GitHub stars in 6 months
 * Used by at least 3 production SaaS tools or side projects
@@ -109,7 +109,7 @@ To build an open-source Node.js library that abstracts email integration across 
 ### 7. **README Template (For GitHub)**
 
 ````md
-# Inbox Unifier
+# Unimail
 
 > 📬 Unified Node.js SDK to fetch and parse emails from Gmail, Outlook, IMAP.
 
@@ -121,13 +121,13 @@ To build an open-source Node.js library that abstracts email integration across 
 
 ## Install
 ```bash
-npm install inbox-unifier
+npm install unimail
 ````
 
 ## Quick Start (Gmail)
 
 ```ts
-import { GmailAdapter } from 'inbox-unifier';
+import { GmailAdapter } from 'unimail';
 
 const gmail = new GmailAdapter({
   clientId: process.env.GOOGLE_CLIENT_ID,

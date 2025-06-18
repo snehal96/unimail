@@ -1,4 +1,4 @@
-import { NormalizedEmail, FetchOptions, AdapterCredentials } from '../interfaces';
+import { NormalizedEmail, FetchOptions, AdapterCredentials } from '../interfaces.js';
 
 export interface IAdapter {
   // credentials?: AdapterCredentials; // Credentials might be passed in constructor

@@ -1,7 +1,7 @@
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
 import { IAdapter } from './IAdapter';
-import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces';
+import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.js';
 import { EmailParserService } from '../services/EmailParserService';
 
 export class GmailAdapter implements IAdapter {

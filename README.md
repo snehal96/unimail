@@ -1,4 +1,4 @@
-# Inbox Unifier
+# Unimail
 
 > 📬 Unified Node.js SDK to fetch and parse emails from Gmail, Outlook, IMAP.
 
@@ -6,7 +6,7 @@
 
 **This library is currently in an early alpha stage. The API is subject to change, and it currently only supports Gmail integration. Please use with caution and report any issues you encounter.**
 
-Inbox Unifier is an open-source Node.js library designed to simplify email integration across various providers like Gmail, Outlook, and IMAP. It provides a standardized way to fetch emails, parse attachments, and normalize metadata, making it an ideal solution for developers building inbox-integrated applications, document processors, AI email assistants, and more.
+Unimail is an open-source Node.js library designed to simplify email integration across various providers like Gmail, Outlook, and IMAP. It provides a standardized way to fetch emails, parse attachments, and normalize metadata, making it an ideal solution for developers building inbox-integrated applications, document processors, AI email assistants, and more.
 
 ---
 
@@ -25,9 +25,9 @@ Inbox Unifier is an open-source Node.js library designed to simplify email integ
 ## Installation
 
 ```bash
-npm install inbox-unifier
+npm install unimail
 # or
-yarn add inbox-unifier
+yarn add unimail
 ```
 
 ---
@@ -68,7 +68,7 @@ To use the Gmail adapter, you'll need to:
 ## Quick Start (Gmail)
 
 ```typescript
-import { GmailAdapter, FetchOptions, GmailCredentials } from 'inbox-unifier';
+import { GmailAdapter, FetchOptions, GmailCredentials } from 'unimail';
 import dotenv from 'dotenv';
 
 // Load environment variables
