@@ -31,6 +31,7 @@ export interface FetchOptions {
   includeAttachments?: boolean; // Default true, might just fetch metadata first
   attachmentDir?: string; // Optional: directory to save attachments instead of buffer
   unreadOnly?: boolean;
+  format?: 'raw' | 'full' | 'metadata'; // Default 'raw' for backward compatibility
 }
 
 export interface GmailCredentials {

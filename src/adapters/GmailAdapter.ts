@@ -58,8 +58,24 @@ export class GmailAdapter implements IAdapter {
     this.ensureInitialized();
     await this.authenticate(); // Ensure token is fresh
 
-    const { limit = 10, query, since, unreadOnly } = options;
+    const { limit = 10, query, since, unreadOnly, includeBody = true, includeAttachments = true, format } = options;
     let gmailQuery = query || '';
+
+    // Determine the best format to use based on options
+    let messageFormat: 'raw' | 'full' | 'metadata' = format || 'raw';
+    
+    // If format isn't explicitly specified, infer it based on what the user needs
+    if (!format) {
+      if (!includeBody && !includeAttachments) {
+        messageFormat = 'metadata'; // Just need headers
+      } else if (includeBody && includeAttachments) {
+        // Keep 'raw' for backward compatibility and most complete parsing
+        messageFormat = 'raw';
+      } else {
+        // Need some message content but not everything
+        messageFormat = 'full';
+      }
+    }
 
     if (since) {
       const sinceDate = typeof since === 'string' ? new Date(since) : since;
@@ -89,50 +105,33 @@ export class GmailAdapter implements IAdapter {
         const messageResponse = await this.gmail_!.users.messages.get({
           userId: 'me',
           id: messageHeader.id,
-          format: 'raw', // Get the full raw email for parsing
+          format: messageFormat, // Use the determined format
         });
 
-        if (messageResponse.data.raw) {
-          const rawEmail = Buffer.from(messageResponse.data.raw, 'base64').toString('utf-8');
-          // Use messageResponse.data.id! as it's confirmed to exist from messageHeader.id
-          const normalized = await this.emailParserService.parseEmail(rawEmail, messageResponse.data.id!, 'gmail');
-          
-          // Refine attachment details using Gmail API if needed, especially for skipping inline
-          // For now, EmailParserService provides initial attachment parsing.
-          // PRD: "Skips inline images"
-          // We can enhance this by checking parts from 'payload' if format was 'full'
-          // and correlating with attachments from mailparser.
+        let normalized: NormalizedEmail;
 
-          if (messageResponse.data.payload && messageResponse.data.payload.headers) {
-            const subjectHeader = messageResponse.data.payload.headers.find(h => h.name === 'Subject');
-            normalized.subject = subjectHeader?.value || normalized.subject; // Prefer Gmail API's direct subject
-            // Similarly for From, To, Date if mailparser's result is less reliable
-          }
+        if (messageFormat === 'raw' && messageResponse.data.raw) {
+          // Process using raw email format (existing code path)
+          const rawEmail = Buffer.from(messageResponse.data.raw, 'base64').toString('utf-8');
+          normalized = await this.emailParserService.parseEmail(rawEmail, messageResponse.data.id!, 'gmail');
+          
           normalized.threadId = messageResponse.data.threadId || normalized.threadId;
           normalized.labels = messageResponse.data.labelIds || normalized.labels;
-
-
-          // Implement skipping inline images based on PRD
-          // This requires more detailed parsing of message parts if not using 'raw' and mailparser alone
-          // For now, we rely on mailparser's output. A more robust solution would inspect
-          // messageResponse.data.payload.parts for contentDisposition.
-          normalized.attachments = normalized.attachments.filter(att => {
-            // A simple heuristic: if contentId exists, it might be inline.
-            // A better check involves seeing if the contentId is referenced in the HTML body.
-            // Or, if using format: 'full', check part.headers for 'Content-Disposition: inline'
-            // For now, we'll keep all attachments parsed by mailparser.
-            // To implement "Skips inline images", we'd need to:
-            // 1. Fetch message with format: 'full' or 'metadata' along with 'raw'.
-            // 2. Iterate through messageResponse.data.payload.parts.
-            // 3. If a part has a header 'Content-Disposition' that includes 'inline', mark it.
-            // 4. Correlate these parts with attachments from mailparser (e.g., by filename or partId).
-            // This is a simplification for now.
-            return true; 
-          });
-
-
-          normalizedEmails.push(normalized);
+        } else {
+          // Process using structured data from Gmail API ('full' or 'metadata' format)
+          normalized = await this.parseStructuredMessage(messageResponse.data, includeBody, includeAttachments);
         }
+
+        // Implement skipping inline images based on PRD
+        normalized.attachments = normalized.attachments.filter(att => {
+          if (att.contentId && normalized.bodyHtml?.includes(`cid:${att.contentId.replace(/[<>]/g, '')}`)) {
+            // This is likely an inline image referenced in the HTML
+            return false;
+          }
+          return true;
+        });
+
+        normalizedEmails.push(normalized);
       }
       return normalizedEmails;
     } catch (error) {
@@ -143,5 +142,111 @@ export class GmailAdapter implements IAdapter {
       }
       throw new Error(`Failed to fetch Gmail emails: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Parses a Gmail message from structured data (when using 'full' or 'metadata' format)
+   * @param message The Gmail message object from the API
+   * @param includeBody Whether to include message body content
+   * @param includeAttachments Whether to include attachment data
+   */
+  private async parseStructuredMessage(
+    message: gmail_v1.Schema$Message, 
+    includeBody: boolean = true,
+    includeAttachments: boolean = true
+  ): Promise<NormalizedEmail> {
+    // Initialize the normalized email
+    const normalized: NormalizedEmail = {
+      id: message.id!,
+      threadId: message.threadId || undefined,
+      from: '',
+      to: [],
+      attachments: [],
+      date: new Date(),
+      provider: 'gmail',
+      labels: message.labelIds || []
+    };
+
+    // Extract headers
+    if (message.payload?.headers) {
+      for (const header of message.payload.headers) {
+        switch(header.name?.toLowerCase()) {
+          case 'from':
+            normalized.from = header.value || '';
+            break;
+          case 'to':
+            normalized.to = header.value?.split(',').map(addr => addr.trim()) || [];
+            break;
+          case 'cc':
+            normalized.cc = header.value?.split(',').map(addr => addr.trim()) || [];
+            break;
+          case 'bcc':
+            normalized.bcc = header.value?.split(',').map(addr => addr.trim()) || [];
+            break;
+          case 'subject':
+            normalized.subject = header.value || undefined;
+            break;
+          case 'date':
+            normalized.date = header.value ? new Date(header.value) : new Date();
+            break;
+        }
+      }
+    }
+
+    // Extract body and attachments only if needed and available
+    if (includeBody && message.payload) {
+      // Process parts only if we're using 'full' format and have parts
+      if (message.payload.parts && message.payload.parts.length > 0) {
+        // Extract text and HTML bodies
+        for (const part of message.payload.parts) {
+          // Plain text body
+          if (part.mimeType === 'text/plain' && part.body?.data) {
+            normalized.bodyText = Buffer.from(part.body.data, 'base64').toString('utf-8');
+          }
+          // HTML body
+          else if (part.mimeType === 'text/html' && part.body?.data) {
+            normalized.bodyHtml = Buffer.from(part.body.data, 'base64').toString('utf-8');
+          }
+          // Handle attachments
+          else if (includeAttachments && part.filename && part.body) {
+            const attachment: Attachment = {
+              filename: part.filename,
+              mimeType: part.mimeType || 'application/octet-stream',
+              size: part.body.size || 0,
+              contentId: part.headers?.find(h => h.name?.toLowerCase() === 'content-id')?.value || undefined,
+            };
+            
+            // Only fetch attachment data if we need the buffer and we have an attachment ID
+            if (part.body.attachmentId) {
+              try {
+                const attachmentResponse = await this.gmail_!.users.messages.attachments.get({
+                  userId: 'me',
+                  messageId: message.id!,
+                  id: part.body.attachmentId
+                });
+                
+                if (attachmentResponse.data.data) {
+                  attachment.buffer = Buffer.from(attachmentResponse.data.data, 'base64');
+                }
+              } catch (error) {
+                console.error(`Failed to fetch attachment ${part.filename}:`, error);
+              }
+            }
+            normalized.attachments.push(attachment);
+          }
+        }
+      } 
+      // Single part message with body directly in payload
+      else if (message.payload.body?.data) {
+        const bodyContent = Buffer.from(message.payload.body.data, 'base64').toString('utf-8');
+        if (message.payload.mimeType === 'text/html') {
+          normalized.bodyHtml = bodyContent;
+        } else {
+          normalized.bodyText = bodyContent;
+        }
+      }
+    }
+
+    return normalized;
   }
 }

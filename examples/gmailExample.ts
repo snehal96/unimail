@@ -38,13 +38,17 @@ async function main() {
 
 
     const fetchOptions: FetchOptions = {
-      limit: 20, // Fetch 5 emails
+      limit: 20, // Fetch 20 emails
       // query: 'has:attachment filename:pdf', // Example query
       query: '',
       unreadOnly: true,
       // since: '2024-01-01',
       includeBody: true,
       includeAttachments: true, // If true, buffers will be populated
+      // format: 'raw', // Use 'raw' for complete fidelity with mailparser (default)
+      // format: 'full', // Use 'full' for structured message format from Gmail
+      // format: 'metadata', // Use 'metadata' for headers only (most efficient)
+      // If format is not specified, the adapter will choose based on includeBody and includeAttachments
     };
 
     console.log('Fetching emails with options:', fetchOptions);

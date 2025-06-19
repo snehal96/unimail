@@ -159,6 +159,11 @@ Fetches emails based on the provided options.
     *   `unreadOnly?: boolean`: Fetch only unread emails.
     *   `includeBody?: boolean`: Whether to include `bodyText` and `bodyHtml` in the result.
     *   `includeAttachments?: boolean`: Whether to include attachment `buffer`s.
+    *   `format?: 'raw' | 'full' | 'metadata'`: Control how emails are fetched from the provider.
+        *   `'raw'`: Get the full RFC 2822 formatted email (most complete but larger).
+        *   `'full'`: Get a structured representation with headers, body, and parts.
+        *   `'metadata'`: Get just headers (most efficient for listing emails).
+        *   Defaults to an appropriate value based on `includeBody` and `includeAttachments`.
 
 ### `NormalizedEmail` Schema
 
