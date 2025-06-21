@@ -1,6 +1,6 @@
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { IAdapter } from './IAdapter';
+import { IAdapter, PaginatedEmailsResponse } from './IAdapter';
 import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.js';
 import { EmailParserService } from '../services/EmailParserService';
 
@@ -54,11 +54,24 @@ export class GmailAdapter implements IAdapter {
     }
   }
 
-  public async fetchEmails(options: FetchOptions): Promise<NormalizedEmail[]> {
+  public async fetchEmails(options: FetchOptions): Promise<PaginatedEmailsResponse> {
     this.ensureInitialized();
     await this.authenticate(); // Ensure token is fresh
 
-    const { limit = 10, query, since, unreadOnly, includeBody = true, includeAttachments = true, format } = options;
+    const { 
+      limit = 10, 
+      query, 
+      since, 
+      before,
+      unreadOnly, 
+      includeBody = true, 
+      includeAttachments = true, 
+      format,
+      pageToken,
+      pageSize,
+      getAllPages = false
+    } = options;
+
     let gmailQuery = query || '';
 
     // Determine the best format to use based on options
@@ -81,59 +94,30 @@ export class GmailAdapter implements IAdapter {
       const sinceDate = typeof since === 'string' ? new Date(since) : since;
       gmailQuery += ` after:${sinceDate.getFullYear()}/${sinceDate.getMonth() + 1}/${sinceDate.getDate()}`;
     }
+    if (before) {
+      const beforeDate = typeof before === 'string' ? new Date(before) : before;
+      gmailQuery += ` before:${beforeDate.getFullYear()}/${beforeDate.getMonth() + 1}/${beforeDate.getDate()}`;
+    }
     if (unreadOnly) {
       gmailQuery += ' is:unread';
     }
     gmailQuery = gmailQuery.trim();
 
     try {
-      const listMessagesResponse = await this.gmail_!.users.messages.list({
-        userId: 'me',
-        q: gmailQuery || undefined, // q parameter cannot be empty string
-        maxResults: limit,
-      });
-
-      const messages = listMessagesResponse.data.messages;
-      if (!messages || messages.length === 0) {
-        return [];
+      if (getAllPages) {
+        // Fetch all pages up to limit
+        return await this.fetchAllEmailPages(gmailQuery, limit, messageFormat, includeBody, includeAttachments);
+      } else {
+        // Fetch a single page
+        return await this.fetchEmailPage(
+          gmailQuery, 
+          pageSize || limit, 
+          messageFormat, 
+          includeBody, 
+          includeAttachments, 
+          pageToken
+        );
       }
-
-      const normalizedEmails: NormalizedEmail[] = [];
-      for (const messageHeader of messages) {
-        if (!messageHeader.id) continue;
-
-        const messageResponse = await this.gmail_!.users.messages.get({
-          userId: 'me',
-          id: messageHeader.id,
-          format: messageFormat, // Use the determined format
-        });
-
-        let normalized: NormalizedEmail;
-
-        if (messageFormat === 'raw' && messageResponse.data.raw) {
-          // Process using raw email format (existing code path)
-          const rawEmail = Buffer.from(messageResponse.data.raw, 'base64').toString('utf-8');
-          normalized = await this.emailParserService.parseEmail(rawEmail, messageResponse.data.id!, 'gmail');
-          
-          normalized.threadId = messageResponse.data.threadId || normalized.threadId;
-          normalized.labels = messageResponse.data.labelIds || normalized.labels;
-        } else {
-          // Process using structured data from Gmail API ('full' or 'metadata' format)
-          normalized = await this.parseStructuredMessage(messageResponse.data, includeBody, includeAttachments);
-        }
-
-        // Implement skipping inline images based on PRD
-        normalized.attachments = normalized.attachments.filter(att => {
-          if (att.contentId && normalized.bodyHtml?.includes(`cid:${att.contentId.replace(/[<>]/g, '')}`)) {
-            // This is likely an inline image referenced in the HTML
-            return false;
-          }
-          return true;
-        });
-
-        normalizedEmails.push(normalized);
-      }
-      return normalizedEmails;
     } catch (error) {
       console.error('Error fetching Gmail emails:', error);
       // Check for specific Google API errors if possible
@@ -142,6 +126,128 @@ export class GmailAdapter implements IAdapter {
       }
       throw new Error(`Failed to fetch Gmail emails: ${(error as Error).message}`);
     }
+  }
+
+  /**
+   * Fetches a single page of emails
+   */
+  private async fetchEmailPage(
+    query: string,
+    maxResults: number,
+    messageFormat: 'raw' | 'full' | 'metadata',
+    includeBody: boolean,
+    includeAttachments: boolean,
+    pageToken?: string
+  ): Promise<PaginatedEmailsResponse> {
+    const listMessagesResponse = await this.gmail_!.users.messages.list({
+      userId: 'me',
+      q: query || undefined, // q parameter cannot be empty string
+      maxResults,
+      pageToken
+    });
+
+    const messages = listMessagesResponse.data.messages;
+    if (!messages || messages.length === 0) {
+      return { 
+        emails: [], 
+        nextPageToken: listMessagesResponse.data.nextPageToken || undefined,
+        totalCount: listMessagesResponse.data.resultSizeEstimate || undefined
+      };
+    }
+
+    const normalizedEmails: NormalizedEmail[] = [];
+    for (const messageHeader of messages) {
+      if (!messageHeader.id) continue;
+
+      const messageResponse = await this.gmail_!.users.messages.get({
+        userId: 'me',
+        id: messageHeader.id,
+        format: messageFormat, // Use the determined format
+      });
+
+      let normalized: NormalizedEmail;
+
+      if (messageFormat === 'raw' && messageResponse.data.raw) {
+        // Process using raw email format
+        const rawEmail = Buffer.from(messageResponse.data.raw, 'base64').toString('utf-8');
+        normalized = await this.emailParserService.parseEmail(rawEmail, messageResponse.data.id!, 'gmail');
+        
+        normalized.threadId = messageResponse.data.threadId || normalized.threadId;
+        normalized.labels = messageResponse.data.labelIds || normalized.labels;
+      } else {
+        // Process using structured data from Gmail API
+        normalized = await this.parseStructuredMessage(messageResponse.data, includeBody, includeAttachments);
+      }
+
+      // Implement skipping inline images
+      normalized.attachments = normalized.attachments.filter(att => {
+        if (att.contentId && normalized.bodyHtml?.includes(`cid:${att.contentId.replace(/[<>]/g, '')}`)) {
+          // This is likely an inline image referenced in the HTML
+          return false;
+        }
+        return true;
+      });
+
+      normalizedEmails.push(normalized);
+    }
+    
+    return { 
+      emails: normalizedEmails, 
+      nextPageToken: listMessagesResponse.data.nextPageToken || undefined,
+      totalCount: listMessagesResponse.data.resultSizeEstimate || undefined
+    };
+  }
+
+  /**
+   * Fetches all pages of emails up to the specified limit
+   */
+  private async fetchAllEmailPages(
+    query: string,
+    limit: number,
+    messageFormat: 'raw' | 'full' | 'metadata',
+    includeBody: boolean,
+    includeAttachments: boolean
+  ): Promise<PaginatedEmailsResponse> {
+    const allEmails: NormalizedEmail[] = [];
+    let nextPageToken: string | undefined;
+    let totalCount: number | undefined;
+    
+    // Use a reasonable page size (Gmail API default is 100)
+    const pageSize = Math.min(limit, 100);
+    
+    do {
+      const response = await this.fetchEmailPage(
+        query, 
+        pageSize, 
+        messageFormat, 
+        includeBody, 
+        includeAttachments, 
+        nextPageToken
+      );
+      
+      allEmails.push(...response.emails);
+      nextPageToken = response.nextPageToken;
+      
+      // Store the total count from the first response
+      if (totalCount === undefined && response.totalCount !== undefined) {
+        totalCount = response.totalCount;
+      }
+      
+      // Stop if we've reached the limit or there are no more pages
+      if (!nextPageToken || allEmails.length >= limit) {
+        break;
+      }
+    } while (true);
+    
+    // Enforce the limit (in case we fetched more than needed)
+    const limitedEmails = allEmails.slice(0, limit);
+    
+    return { 
+      emails: limitedEmails,
+      // Don't return nextPageToken if we've fetched all pages or reached the limit
+      nextPageToken: allEmails.length >= limit ? nextPageToken : undefined,
+      totalCount
+    };
   }
 
   /**

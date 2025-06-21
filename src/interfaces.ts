@@ -25,13 +25,17 @@ export interface NormalizedEmail {
 
 export interface FetchOptions {
   limit?: number;
-  since?: Date | string; // Fetch emails since this date
+  since?: Date | string; // Fetch emails since this date (inclusive)
+  before?: Date | string; // Fetch emails before this date (inclusive)
   query?: string; // Provider-specific query string (e.g., Gmail search operators)
   includeBody?: boolean; // Default true
   includeAttachments?: boolean; // Default true, might just fetch metadata first
   attachmentDir?: string; // Optional: directory to save attachments instead of buffer
   unreadOnly?: boolean;
   format?: 'raw' | 'full' | 'metadata'; // Default 'raw' for backward compatibility
+  pageToken?: string; // Token for fetching the next page of results
+  pageSize?: number; // Number of results per page (defaults to limit if not specified)
+  getAllPages?: boolean; // Whether to automatically fetch all pages (up to limit)
 }
 
 export interface GmailCredentials {

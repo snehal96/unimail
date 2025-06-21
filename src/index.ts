@@ -1,5 +1,6 @@
 // Export interfaces
 export * from './interfaces.js';
+export { PaginatedEmailsResponse } from './adapters/IAdapter.js';
 
 // Export adapters
 export { GmailAdapter } from './adapters/GmailAdapter.js';

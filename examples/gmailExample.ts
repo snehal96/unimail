@@ -42,18 +42,34 @@ async function main() {
       // query: 'has:attachment filename:pdf', // Example query
       query: '',
       unreadOnly: true,
-      // since: '2024-01-01',
+      // Date range options:
+      // since: '2025-01-01', // Fetch emails since January 1, 2025
+      // before: '2025-06-21', // Fetch emails before June 21, 2025
+      // Alternative date range in query: query: 'after:2025/01/01 before:2025/06/21',
       includeBody: true,
       includeAttachments: true, // If true, buffers will be populated
       // format: 'raw', // Use 'raw' for complete fidelity with mailparser (default)
       // format: 'full', // Use 'full' for structured message format from Gmail
       // format: 'metadata', // Use 'metadata' for headers only (most efficient)
       // If format is not specified, the adapter will choose based on includeBody and includeAttachments
+      
+      // Pagination options:
+      // pageToken: undefined, // Token to fetch next page (undefined for first page)
+      // pageSize: 10,         // Items per page (defaults to limit if not specified)
+      // getAllPages: false,   // Whether to fetch all pages up to the limit
     };
 
     console.log('Fetching emails with options:', fetchOptions);
-    const emails: NormalizedEmail[] = await gmailAdapter.fetchEmails(fetchOptions);
+    const { emails, nextPageToken, totalCount } = await gmailAdapter.fetchEmails(fetchOptions);
     console.log(`Fetched ${emails.length} emails successfully.`);
+    
+    if (nextPageToken) {
+      console.log(`More emails available. Use nextPageToken: "${nextPageToken}" to fetch the next page.`);
+    }
+    
+    if (totalCount !== undefined) {
+      console.log(`Total matching emails: approximately ${totalCount}`);
+    }
 
     if (emails.length === 0) {
       console.log('No emails found matching the criteria.');
@@ -109,6 +125,20 @@ async function main() {
         //   console.log(`    Saved to ${filePath}`);
         // }
       });
+    }
+
+    // Example of fetching a second page if available
+    if (nextPageToken) {
+      console.log('\n--- Fetching Next Page ---');
+      const nextPageOptions = {
+        ...fetchOptions,
+        pageToken: nextPageToken
+      };
+      
+      const { emails: nextPageEmails } = await gmailAdapter.fetchEmails(nextPageOptions);
+      console.log(`Fetched ${nextPageEmails.length} additional emails.`);
+      
+      // Process these emails as needed...
     }
 
   } catch (error) {

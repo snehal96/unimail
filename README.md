@@ -149,13 +149,14 @@ Initializes the adapter with the necessary OAuth2 credentials.
 
 *   `credentials`: An object containing `clientId`, `clientSecret`, and `refreshToken`.
 
-#### `async fetchEmails(options: FetchOptions): Promise<NormalizedEmail[]>`
+#### `async fetchEmails(options: FetchOptions): Promise<PaginatedEmailsResponse>`
 Fetches emails based on the provided options.
 
 *   `options`: An object to specify fetching criteria:
     *   `limit?: number`: Maximum number of emails to fetch.
     *   `query?: string`: Provider-specific search query (e.g., Gmail search operators).
-    *   `since?: string | Date`: Fetch emails received after this date.
+    *   `since?: string | Date`: Fetch emails received after this date (inclusive).
+    *   `before?: string | Date`: Fetch emails received before this date (inclusive).
     *   `unreadOnly?: boolean`: Fetch only unread emails.
     *   `includeBody?: boolean`: Whether to include `bodyText` and `bodyHtml` in the result.
     *   `includeAttachments?: boolean`: Whether to include attachment `buffer`s.
@@ -164,10 +165,25 @@ Fetches emails based on the provided options.
         *   `'full'`: Get a structured representation with headers, body, and parts.
         *   `'metadata'`: Get just headers (most efficient for listing emails).
         *   Defaults to an appropriate value based on `includeBody` and `includeAttachments`.
+    *   `pageToken?: string`: Token for fetching the next page of results.
+    *   `pageSize?: number`: Number of results per page (defaults to limit if not specified).
+    *   `getAllPages?: boolean`: Whether to automatically fetch all pages (up to limit).
+
+### Return Type
+
+The `fetchEmails` method returns a `PaginatedEmailsResponse` object:
+
+```typescript
+interface PaginatedEmailsResponse {
+  emails: NormalizedEmail[];      // Array of normalized email objects
+  nextPageToken?: string;         // Token for fetching the next page (undefined if no more pages)
+  totalCount?: number;            // Approximate total number of emails matching the query
+}
+```
 
 ### `NormalizedEmail` Schema
 
-The `fetchEmails` method returns an array of `NormalizedEmail` objects:
+Each email in the `emails` array is a `NormalizedEmail` object:
 
 ```typescript
 interface NormalizedEmail {
@@ -199,6 +215,63 @@ interface Attachment {
 }
 ```
 *(Note: The `NormalizedEmail` and `Attachment` interfaces are defined in `src/interfaces.ts` and may evolve.)*
+
+---
+
+## Date Range Queries
+
+You can fetch emails within a specific date range using either the `since` and `before` parameters or by using Gmail's search syntax in the `query` parameter:
+
+```typescript
+// Using since and before parameters
+const { emails } = await gmailAdapter.fetchEmails({
+  since: '2025-01-01',        // January 1, 2025
+  before: '2025-06-21',       // June 21, 2025
+  limit: 100
+});
+
+// Using Gmail's search syntax in the query
+const { emails } = await gmailAdapter.fetchEmails({
+  query: 'after:2025/01/01 before:2025/06/21 has:attachment',
+  limit: 100
+});
+```
+
+Both approaches will return emails from the specified date range. The parameters accept Date objects or date strings.
+
+## Pagination Support
+
+When fetching large numbers of emails, you can use pagination to prevent memory problems:
+
+```typescript
+// First page (default page size is the same as limit)
+const { emails, nextPageToken } = await gmailAdapter.fetchEmails({ 
+  limit: 50,
+  query: 'has:attachment'
+});
+console.log(`Fetched ${emails.length} emails, more available: ${nextPageToken ? 'Yes' : 'No'}`);
+
+// If there are more pages, fetch the next one
+if (nextPageToken) {
+  const { emails: nextEmails, nextPageToken: newNextPageToken } = await gmailAdapter.fetchEmails({
+    limit: 50,
+    query: 'has:attachment',
+    pageToken: nextPageToken
+  });
+  console.log(`Fetched another ${nextEmails.length} emails`);
+}
+```
+
+Alternatively, you can fetch all emails matching a query (up to a limit) in one call:
+
+```typescript
+const { emails, totalCount } = await gmailAdapter.fetchEmails({
+  limit: 200,
+  query: 'has:attachment',
+  getAllPages: true
+});
+console.log(`Fetched ${emails.length} emails out of approximately ${totalCount}`);
+```
 
 ---
 
