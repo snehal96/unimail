@@ -1,8 +1,10 @@
 import { google, gmail_v1 } from 'googleapis';
-import { OAuth2Client } from 'google-auth-library';
+import { OAuth2Client, Credentials } from 'google-auth-library';
 import { IAdapter, PaginatedEmailsResponse } from './IAdapter';
 import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.js';
 import { EmailParserService } from '../services/EmailParserService';
+import { OAuthService } from '../auth/OAuthService';
+import { GoogleOAuthProvider } from '../auth/providers/GoogleOAuthProvider';
 
 export class GmailAdapter implements IAdapter {
   private oauth2Client_?: OAuth2Client;
@@ -10,23 +12,117 @@ export class GmailAdapter implements IAdapter {
   private credentials_?: GmailCredentials;
   private emailParserService: EmailParserService;
   private initialized: boolean = false;
+  private oauthService?: OAuthService;
 
   constructor() {
     this.emailParserService = new EmailParserService();
   }
 
+  /**
+   * Initialize the Gmail adapter with credentials.
+   * This method now supports both traditional refresh token authentication
+   * and the new OAuth flow using an auth code.
+   */
   public async initialize(credentials: GmailCredentials): Promise<void> {
     this.credentials_ = credentials;
+    
+    // Create OAuth2Client
     this.oauth2Client_ = new google.auth.OAuth2(
       this.credentials_.clientId,
-      this.credentials_.clientSecret
+      this.credentials_.clientSecret,
+      this.credentials_.redirectUri
     );
-    this.oauth2Client_.setCredentials({ refresh_token: this.credentials_.refreshToken });
+    
+    // Handle OAuth flow if auth code is provided instead of refresh token
+    if (!this.credentials_.refreshToken && this.credentials_.authCode) {
+      if (!this.credentials_.redirectUri) {
+        throw new Error('redirectUri is required when using authCode for authentication');
+      }
+      
+      try {
+        // Exchange the auth code for tokens
+        const { tokens } = await this.oauth2Client_.getToken(this.credentials_.authCode);
+        
+        // Save the refresh token
+        if (tokens.refresh_token) {
+          this.credentials_.refreshToken = tokens.refresh_token;
+        } else {
+          throw new Error('No refresh token received. Make sure you are requesting offline access and forcing consent.');
+        }
+        
+        // Set the credentials
+        this.oauth2Client_.setCredentials(tokens);
+      } catch (error) {
+        throw new Error(`Failed to exchange auth code for tokens: ${(error as Error).message}`);
+      }
+    } else if (this.credentials_.refreshToken) {
+      // Use existing refresh token
+      this.oauth2Client_.setCredentials({ refresh_token: this.credentials_.refreshToken });
+    } else {
+      throw new Error('Either refreshToken or authCode must be provided in the credentials');
+    }
+    
+    // Create Gmail API client
     this.gmail_ = google.gmail({ version: 'v1', auth: this.oauth2Client_ });
     this.initialized = true;
-    // Attempt an initial authentication to confirm credentials are valid
-    // await this.authenticate(); 
-    // Consider if initial authenticate here is desired or if it should happen on first fetch
+  }
+  
+  /**
+   * Start the OAuth flow to get authorization from the user
+   * @returns The authorization URL that the user should visit
+   */
+  public static async startOAuthFlow(
+    clientId: string, 
+    clientSecret: string, 
+    redirectUri: string,
+    port: number = 3000,
+    callbackPath: string = '/oauth/callback'
+  ): Promise<string> {
+    const oauthService = new OAuthService(new GoogleOAuthProvider());
+    
+    const authUrl = await oauthService.startOAuthFlow(
+      {
+        clientId,
+        clientSecret,
+        redirectUri,
+        scopes: ['https://mail.google.com/'],
+        accessType: 'offline',
+        prompt: 'consent'
+      },
+      undefined, // No user ID needed for this flow
+      callbackPath,
+      port
+    );
+    
+    return authUrl;
+  }
+  
+  /**
+   * Handle the OAuth callback manually (for server-side applications)
+   * @returns TokenData containing access and refresh tokens
+   */
+  public static async handleOAuthCallback(
+    code: string,
+    clientId: string,
+    clientSecret: string,
+    redirectUri: string
+  ): Promise<{ accessToken: string, refreshToken?: string }> {
+    const oauthService = new OAuthService(new GoogleOAuthProvider());
+    
+    const tokenData = await oauthService.handleCallback(
+      code,
+      {
+        clientId,
+        clientSecret,
+        redirectUri,
+        scopes: ['https://mail.google.com/']
+      }
+    );
+    
+    return {
+      accessToken: tokenData.accessToken,
+      refreshToken: tokenData.refreshToken
+    };
   }
 
   private ensureInitialized(): void {

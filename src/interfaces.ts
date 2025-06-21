@@ -41,7 +41,9 @@ export interface FetchOptions {
 export interface GmailCredentials {
   clientId: string;
   clientSecret: string;
-  refreshToken: string | undefined;
+  refreshToken?: string;
+  authCode?: string; // New: Allow authentication with a code rather than a refresh token
+  redirectUri?: string; // Required when using authCode
 }
 
 // For Phase 2
@@ -50,6 +52,9 @@ export interface GmailCredentials {
 
 export type AdapterCredentials = GmailCredentials; // | OutlookCredentials | ImapCredentials;
 
+/**
+ * @deprecated Use TokenData from auth/interfaces.ts instead.
+ */
 export interface TokenData {
   accessToken: string;
   refreshToken?: string; // Not always returned on refresh
