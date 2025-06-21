@@ -40,6 +40,7 @@ async function main() {
     const fetchOptions: FetchOptions = {
       limit: 20, // Fetch 20 emails
       // query: 'has:attachment filename:pdf', // Example query
+      // query: 'label:inbox label:unread', // Search for emails with specific labels
       query: '',
       unreadOnly: true,
       // Date range options:
@@ -110,6 +111,7 @@ async function main() {
       console.log(`Subject: ${email.subject}`);
       console.log(`From: ${email.from}`);
       console.log(`Date: ${email.date}`);
+      console.log(`Labels: ${email.labels?.join(', ') || 'None'}`);
       console.log(`Body (text preview): ${email.bodyText?.substring(0, 100)}...`);
       console.log(`Attachments (${email.attachments.length}):`);
       email.attachments.forEach(att => {

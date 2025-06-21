@@ -435,6 +435,69 @@ const { emails, totalCount } = await gmailAdapter.fetchEmails({
 console.log(\`Fetched \${emails.length} emails out of approximately \${totalCount}\`);
 \`\`\`
 
+## Working with Gmail Labels
+
+Gmail organizes emails using labels, which are included in the \`labels\` property of the \`NormalizedEmail\` object. You can:
+
+1. Filter emails by label using Gmail's search syntax:
+
+```typescript
+// Fetch emails with specific labels
+const response = await gmailAdapter.fetchEmails({
+  query: 'label:important label:unread', // Emails that are both important and unread
+  limit: 20
+});
+
+// Or use Gmail's built-in system labels
+const { emails } = await gmailAdapter.fetchEmails({
+  query: 'in:inbox in:sent', // Emails in inbox and sent folders
+  limit: 20
+});
+```
+
+2. Process emails based on their labels after fetching:
+
+```typescript
+const { emails } = await gmailAdapter.fetchEmails({
+  limit: 50,
+  includeBody: true
+});
+
+// Group emails by label
+const emailsByLabel = new Map<string, NormalizedEmail[]>();
+for (const email of emails) {
+  if (email.labels) {
+    for (const label of email.labels) {
+      if (!emailsByLabel.has(label)) {
+        emailsByLabel.set(label, []);
+      }
+      emailsByLabel.get(label)!.push(email);
+    }
+  }
+}
+
+// Process emails by label
+for (const [label, labelEmails] of emailsByLabel.entries()) {
+  console.log(`\nProcessing ${labelEmails.length} emails with label "${label}"`);
+  // Process label-specific emails...
+}
+```
+
+The most common Gmail system labels include:
+- `INBOX` - Messages in the inbox
+- `SENT` - Sent messages
+- `DRAFT` - Draft messages
+- `SPAM` - Messages marked as spam
+- `TRASH` - Messages in the trash
+- `IMPORTANT` - Messages marked as important
+- `CATEGORY_PERSONAL` - Messages categorized as personal
+- `CATEGORY_SOCIAL` - Messages from social networks
+- `CATEGORY_PROMOTIONS` - Marketing emails and promotions
+- `CATEGORY_UPDATES` - Notifications, confirmations, receipts
+- `CATEGORY_FORUMS` - Messages from mailing lists or forums
+
+You can find the complete list in the [Gmail API documentation](https://developers.google.com/gmail/api/guides/labels).
+
 ---
 
 ## Roadmap

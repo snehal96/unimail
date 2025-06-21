@@ -18,7 +18,7 @@ export interface NormalizedEmail {
   bodyHtml?: string;
   attachments: Attachment[];
   date: Date; // Received date
-  labels?: string[]; // e.g., Gmail labels
+  labels?: string[]; // Provider-specific labels (e.g., Gmail labels like 'INBOX', 'SENT', 'IMPORTANT', 'CATEGORY_PERSONAL', etc.)
   provider: 'gmail' | 'outlook' | 'imap' | 'unknown';
   raw?: any; // Optional: store the raw provider response
 }
