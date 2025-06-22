@@ -4,7 +4,7 @@ export { PaginatedEmailsResponse } from './adapters/IAdapter.js';
 
 // Export adapters
 export { GmailAdapter } from './adapters/GmailAdapter.js';
-// export { OutlookAdapter } from './adapters/OutlookAdapter.js'; // Phase 2
+export { OutlookAdapter } from './adapters/OutlookAdapter.js';
 // export { ImapAdapter } from './adapters/ImapAdapter.js';     // Phase 2
 
 // Export services if they are meant to be used directly, or internal utility classes
@@ -14,6 +14,7 @@ export { EmailParserService } from './services/EmailParserService.js'; // Might 
 export { 
   OAuthService,
   GoogleOAuthProvider,
+  OutlookOAuthProvider,
   MemoryTokenStorage,
   IOAuthProvider,
   ITokenStorage,

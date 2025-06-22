@@ -46,11 +46,19 @@ export interface GmailCredentials {
   redirectUri?: string; // Required when using authCode
 }
 
+export interface OutlookCredentials {
+  clientId: string;
+  clientSecret: string;
+  refreshToken?: string;
+  authCode?: string; // Allow authentication with a code rather than a refresh token
+  redirectUri?: string; // Required when using authCode
+  tenantId?: string; // Optional: Specific tenant for Azure AD authentication
+}
+
 // For Phase 2
-// export interface OutlookCredentials { ... }
 // export interface ImapCredentials { ... }
 
-export type AdapterCredentials = GmailCredentials; // | OutlookCredentials | ImapCredentials;
+export type AdapterCredentials = GmailCredentials | OutlookCredentials; // | ImapCredentials;
 
 /**
  * @deprecated Use TokenData from auth/interfaces.ts instead.

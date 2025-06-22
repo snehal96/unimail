@@ -13,11 +13,14 @@ Unimail is an open-source Node.js library designed to simplify email integration
 ## Features
 
 *   **Unified Interface:** A consistent \`fetchEmails()\` API across different email providers.
-*   **Gmail Integration:** Robust email fetching from Gmail using OAuth2 and the Gmail API.
+*   **Multiple Provider Support:**
+    *   **Gmail Integration:** Robust email fetching from Gmail using OAuth2 and the Gmail API.
+    *   **Outlook/Microsoft 365 Integration:** Email fetching from Outlook using Microsoft Graph API.
 *   **Integrated OAuth Flow:** Built-in OAuth authentication flow for seamless integration without requiring separate auth code.
 *   **Attachment Parsing:** Extracts attachments as Buffers with associated metadata (filename, MIME type, size).
     *   Logic to skip inline images based on content IDs.
 *   **Email Normalization:** Standardized schema for email data, making it easy to work with messages from any provider.
+    *   Consistent handling of Gmail labels and Outlook categories through a unified `labels` field.
 *   **TypeScript Support:** Written in TypeScript for a better development experience with type safety.
 *   **Pluggable Adapters:** Designed with an adapter pattern to easily extend support for new email providers.
 
@@ -500,11 +503,227 @@ You can find the complete list in the [Gmail API documentation](https://develope
 
 ---
 
+## Outlook (Microsoft 365) Integration
+
+Unimail now supports fetching emails from Outlook/Microsoft 365 using the Microsoft Graph API.
+
+### Prerequisites
+
+To use the Outlook adapter, you'll need to:
+
+1. **Register an application in the Azure Portal:**
+   * Go to [Azure Portal > App Registrations](https://portal.azure.com/#blade/Microsoft_AAD_RegisteredApps/ApplicationsListBlade)
+   * Click "New registration"
+   * Give your application a name
+   * Set the Redirect URI to `http://localhost:3000/oauth/callback` (or your chosen redirect URI)
+   * Select "Accounts in any organizational directory and personal Microsoft accounts" for most cases
+   * Click "Register"
+
+2. **Configure API permissions:**
+   * In your app's page, go to "API permissions"
+   * Click "Add a permission" → "Microsoft Graph" → "Delegated permissions"
+   * Add the following permissions:
+     * `Mail.Read` (or `Mail.ReadWrite` if needed)
+     * `offline_access` (for refresh tokens)
+     * `User.Read` (basic profile)
+   * Click "Add permissions" and then "Grant admin consent"
+
+3. **Get your credentials:**
+   * In "Certificates & secrets", create a new client secret
+   * Note your Application (client) ID and the new client secret value
+
+4. **Authentication Options:**
+
+   You have two options for authentication with Outlook:
+
+   #### Option 1: Using the Built-in OAuth Flow (Recommended)
+
+   ```typescript
+   import { OutlookAdapter } from 'unimail';
+   import dotenv from 'dotenv';
+
+   dotenv.config();
+
+   async function authenticateWithOutlookOAuth() {
+     const { 
+       MICROSOFT_CLIENT_ID, 
+       MICROSOFT_CLIENT_SECRET, 
+       MICROSOFT_REDIRECT_URI 
+     } = process.env;
+
+     if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET || !MICROSOFT_REDIRECT_URI) {
+       console.error('Missing required OAuth credentials in .env file');
+       return;
+     }
+
+     // Start the OAuth flow - this opens a browser for user consent
+     await OutlookAdapter.startOAuthFlow(
+       MICROSOFT_CLIENT_ID,
+       MICROSOFT_CLIENT_SECRET,
+       MICROSOFT_REDIRECT_URI
+     );
+
+     // The OAuth flow will display the refresh token when completed
+     // You should save this token for future use
+   }
+
+   authenticateWithOutlookOAuth();
+   ```
+
+   #### Option 2: Using a Pre-obtained Refresh Token
+
+   ```bash
+   npx ts-node examples/outlookOAuthExample.ts
+   ```
+
+   This script will guide you through the OAuth consent flow and print the refresh token to the console.
+
+5. **Environment Variables:**
+   Store your credentials in a `.env` file in the root of your project:
+
+   ```env
+   MICROSOFT_CLIENT_ID=your_client_id
+   MICROSOFT_CLIENT_SECRET=your_client_secret
+   MICROSOFT_REFRESH_TOKEN=your_refresh_token
+   MICROSOFT_REDIRECT_URI=http://localhost:3000/oauth/callback
+   MICROSOFT_TENANT_ID=optional_tenant_id  # Only needed for specific tenant access
+   ```
+
+### Quick Start (Outlook)
+
+```typescript
+import { OutlookAdapter, FetchOptions, OutlookCredentials } from 'unimail';
+import dotenv from 'dotenv';
+
+// Load environment variables
+dotenv.config();
+
+async function main() {
+  const { 
+    MICROSOFT_CLIENT_ID, 
+    MICROSOFT_CLIENT_SECRET, 
+    MICROSOFT_REFRESH_TOKEN 
+  } = process.env;
+
+  if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET || !MICROSOFT_REFRESH_TOKEN) {
+    console.error('Please provide MICROSOFT credentials in your .env file.');
+    process.exit(1);
+  }
+
+  const outlookCredentials: OutlookCredentials = {
+    clientId: MICROSOFT_CLIENT_ID,
+    clientSecret: MICROSOFT_CLIENT_SECRET,
+    refreshToken: MICROSOFT_REFRESH_TOKEN,
+  };
+
+  // Instantiate the adapter
+  const outlookAdapter = new OutlookAdapter();
+
+  try {
+    // Initialize the adapter with credentials
+    console.log('Initializing OutlookAdapter...');
+    await outlookAdapter.initialize(outlookCredentials);
+    console.log('OutlookAdapter initialized successfully.');
+
+    // Define fetch options
+    const fetchOptions: FetchOptions = {
+      limit: 10,
+      includeBody: true,
+      includeAttachments: true,
+    };
+
+    console.log('Fetching emails with options:', fetchOptions);
+    const response = await outlookAdapter.fetchEmails(fetchOptions);
+    console.log(`Fetched ${response.emails.length} emails successfully.`);
+
+    response.emails.forEach(email => {
+      console.log('\n--- Email ---');
+      console.log(`Subject: ${email.subject || '(No subject)'}`);
+      console.log(`From: ${email.from}`);
+      console.log(`Date: ${email.date}`);
+      
+      // Outlook uses "categories" which are normalized to "labels" 
+      // in our NormalizedEmail interface for consistency
+      if (email.labels && email.labels.length > 0) {
+        console.log(`Categories: ${email.labels.join(', ')}`);
+      }
+      
+      console.log(`Attachments (${email.attachments.length})`);
+    });
+
+  } catch (error) {
+    console.error('\nError in Outlook example:', error);
+  }
+}
+
+main();
+```
+
+### Working with Outlook Categories
+
+Outlook uses "categories" instead of labels to organize emails. In Unimail, these are normalized to the \`labels\` property for consistency with Gmail. You can:
+
+1. Filter emails with specific categories using OData filter syntax:
+
+```typescript
+// Fetch emails with specific filtering
+const response = await outlookAdapter.fetchEmails({
+  query: "Project X", // Search term to find emails with this text
+  limit: 20
+});
+
+// For date filtering
+const dateResponse = await outlookAdapter.fetchEmails({
+  since: new Date('2025-01-01'), // Emails since January 1, 2025
+  before: new Date('2025-06-01'), // Emails before June 1, 2025
+  limit: 50
+});
+```
+
+2. Process emails based on their categories/labels after fetching:
+
+```typescript
+const { emails } = await outlookAdapter.fetchEmails({
+  limit: 50,
+  includeBody: true
+});
+
+// Group emails by category
+const emailsByCategory = new Map<string, NormalizedEmail[]>();
+for (const email of emails) {
+  if (email.labels && email.labels.length > 0) {
+    for (const category of email.labels) {
+      if (!emailsByCategory.has(category)) {
+        emailsByCategory.set(category, []);
+      }
+      emailsByCategory.get(category)!.push(email);
+    }
+  } else {
+    // Handle uncategorized emails
+    const uncategorizedKey = 'UNCATEGORIZED';
+    if (!emailsByCategory.has(uncategorizedKey)) {
+      emailsByCategory.set(uncategorizedKey, []);
+    }
+    emailsByCategory.get(uncategorizedKey)!.push(email);
+  }
+}
+
+// Process emails by category
+for (const [category, categoryEmails] of emailsByCategory.entries()) {
+  console.log(`Processing ${categoryEmails.length} emails with category "${category}"`);
+  // Process category-specific emails...
+}
+```
+
+Outlook categories are user-defined, unlike Gmail's system labels, so they will vary depending on how the user has organized their emails.
+
+---
+
 ## Roadmap
 
 *   ✅ **Gmail Integration (OAuth2)**
 *   ✅ **Integrated OAuth Flow**
-*   🛠️ **Outlook/Office365 Integration (Microsoft Graph API)**
+*   ✅ **Outlook/Office365 Integration (Microsoft Graph API)**
 *   🛠️ **IMAP Adapter (Yahoo, custom mail)**
 *   🛠️ **Webhook-friendly Poller** (cron-based or push-ready)
 *   🛠️ **Advanced Attachment Handling** (e.g., more robust inline image skipping, auto-tagging)
