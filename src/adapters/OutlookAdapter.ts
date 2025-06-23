@@ -240,7 +240,7 @@ export class OutlookAdapter implements IAdapter {
       console.error('Outlook authentication error:', error);
       
       // Provide more specific error messages
-      if ((error as any).message?.includes('interaction_required')) {
+      if ((error as any)?.message?.includes('interaction_required')) {
         throw new Error('Outlook authentication failed: Interactive login is required. The refresh token may be expired.');
       }
       throw new Error(`Outlook authentication failed: ${(error as Error).message}`);
@@ -304,7 +304,7 @@ export class OutlookAdapter implements IAdapter {
       }
     } catch (error) {
       console.error('Error fetching Outlook emails:', error);
-      throw new Error(`Failed to fetch Outlook emails: ${(error as Error).message}`);
+      throw new Error(`Failed to fetch Outlook emails: ${error}`);
     }
   }
 

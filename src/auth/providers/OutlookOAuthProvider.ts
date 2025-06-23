@@ -24,7 +24,7 @@ export class OutlookOAuthProvider implements IOAuthProvider {
     const msalApp = this.createMsalApp(options);
     
     // Generate a unique state value for security
-    const state = Math.random().toString(36).substring(2);
+    const state = (options as any).state || Math.random().toString(36).substring(2);
     
     // List of Microsoft Graph API permission scopes for mail access
     const scopes = options.scopes || [

@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<coverage generated="1750646042257" clover="3.2.0">
+  <project timestamp="1750646042257" name="All files">
+    <metrics statements="11" coveredstatements="10" conditionals="27" coveredconditionals="16" methods="9" coveredmethods="5" elements="47" coveredelements="31" complexity="0" loc="11" ncloc="11" packages="1" files="1" classes="1"/>
+    <file name="EmailParserService.ts" path="/Users/snehalmaheshwari/Desktop/personal/gpt-ideas/unimail/src/services/EmailParserService.ts">
+      <metrics statements="11" coveredstatements="10" conditionals="27" coveredconditionals="16" methods="9" coveredmethods="5"/>
+      <line num="1" count="1" type="stmt"/>
+      <line num="4" count="1" type="stmt"/>
+      <line num="10" count="3" type="stmt"/>
+      <line num="11" count="3" type="stmt"/>
+      <line num="13" count="2" type="cond" truecount="2" falsecount="0"/>
+      <line num="25" count="2" type="stmt"/>
+      <line num="29" count="2" type="cond" truecount="1" falsecount="3"/>
+      <line num="30" count="0" type="cond" truecount="3" falsecount="1"/>
+      <line num="41" count="1" type="stmt"/>
+      <line num="42" count="1" type="stmt"/>
+      <line num="49" count="4" type="cond" truecount="3" falsecount="0"/>
+    </file>
+  </project>
+</coverage>
