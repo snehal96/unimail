@@ -1,10 +1,10 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ConfidentialClientApplication } from '@azure/msal-node';
-import { IAdapter, PaginatedEmailsResponse } from './IAdapter';
+import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
 import { NormalizedEmail, FetchOptions, OutlookCredentials, Attachment } from '../interfaces.js';
-import { EmailParserService } from '../services/EmailParserService';
-import { OAuthService } from '../auth/OAuthService';
-import { OutlookOAuthProvider } from '../auth/providers/OutlookOAuthProvider';
+import { EmailParserService } from '../services/EmailParserService.ts';
+import { OAuthService } from '../auth/OAuthService.ts';
+import { OutlookOAuthProvider } from '../auth/providers/OutlookOAuthProvider.ts';
 
 // Type definition for graph messages
 interface OutlookMessage {
@@ -77,48 +77,54 @@ export class OutlookAdapter implements IAdapter {
    */
   public async initialize(credentials: OutlookCredentials): Promise<void> {
     this.credentials_ = credentials;
+
+    if (credentials.accessToken) {
+      // If access token is provided, use it directly
+      this.accessToken_ = credentials.accessToken;
+    } else {
     
-    // Create MSAL app
-    this.msalApp_ = new ConfidentialClientApplication({
-      auth: {
-        clientId: this.credentials_.clientId,
-        clientSecret: this.credentials_.clientSecret,
-        // Use tenant ID if provided, otherwise use common endpoint
-        authority: `https://login.microsoftonline.com/${this.credentials_.tenantId || 'common'}`
-      }
-    });
-    
-    // Handle OAuth flow if auth code is provided instead of refresh token
-    if (!this.credentials_.refreshToken && this.credentials_.authCode) {
-      if (!this.credentials_.redirectUri) {
-        throw new Error('redirectUri is required when using authCode for authentication');
-      }
+      // Create MSAL app
+      this.msalApp_ = new ConfidentialClientApplication({
+        auth: {
+          clientId: this.credentials_.clientId,
+          clientSecret: this.credentials_.clientSecret,
+          // Use tenant ID if provided, otherwise use common endpoint
+          authority: `https://login.microsoftonline.com/${this.credentials_.tenantId || 'common'}`
+        }
+      });
       
-      try {
-        // Exchange the auth code for tokens
-        const tokenRequest = {
-          code: this.credentials_.authCode,
-          scopes: ['https://graph.microsoft.com/Mail.Read', 'offline_access'],
-          redirectUri: this.credentials_.redirectUri,
-        };
-        
-        const response = await this.msalApp_.acquireTokenByCode(tokenRequest);
-        
-        // Save the refresh token
-        // MSAL doesn't directly expose refreshToken in its types but it may be in the response
-        if ((response as any).refreshToken) {
-          this.credentials_.refreshToken = (response as any).refreshToken;
-        } else {
-          throw new Error('No refresh token received. Make sure you are requesting offline access.');
+      // Handle OAuth flow if auth code is provided instead of refresh token
+      if (!this.credentials_.refreshToken && this.credentials_.authCode) {
+        if (!this.credentials_.redirectUri) {
+          throw new Error('redirectUri is required when using authCode for authentication');
         }
         
-        // Save the access token for immediate use
-        this.accessToken_ = response.accessToken!;
-      } catch (error) {
-        throw new Error(`Failed to exchange auth code for tokens: ${(error as Error).message}`);
+        try {
+          // Exchange the auth code for tokens
+          const tokenRequest = {
+            code: this.credentials_.authCode,
+            scopes: ['Mail.Read', 'offline_access'],
+            redirectUri: this.credentials_.redirectUri,
+          };
+          
+          const response = await this.msalApp_.acquireTokenByCode(tokenRequest);
+          
+          // Save the refresh token
+          // MSAL doesn't directly expose refreshToken in its types but it may be in the response
+          if ((response as any).refreshToken) {
+            this.credentials_.refreshToken = (response as any).refreshToken;
+          } else {
+            throw new Error('No refresh token received. Make sure you are requesting offline access.');
+          }
+          
+          // Save the access token for immediate use
+          this.accessToken_ = response.accessToken!;
+        } catch (error) {
+          throw new Error(`Failed to exchange auth code for tokens: ${(error as Error).message}`);
+        }
+      } else if (!this.credentials_.refreshToken) {
+        throw new Error('Either refreshToken or authCode must be provided in the credentials');
       }
-    } else if (!this.credentials_.refreshToken) {
-      throw new Error('Either refreshToken or authCode must be provided in the credentials');
     }
     
     // Initialize the graph client
@@ -136,7 +142,7 @@ export class OutlookAdapter implements IAdapter {
     redirectUri: string,
     tenantId?: string,
     port: number = 3000,
-    callbackPath: string = '/oauth/callback'
+    callbackPath: string = '/oauth/oauth2callback'
   ): Promise<string> {
     const oauthService = new OAuthService(new OutlookOAuthProvider());
     
@@ -145,7 +151,7 @@ export class OutlookAdapter implements IAdapter {
         clientId,
         clientSecret,
         redirectUri,
-        scopes: ['https://graph.microsoft.com/Mail.Read', 'offline_access', 'openid', 'profile', 'User.Read'],
+        scopes: ['Mail.Read', 'offline_access', 'openid', 'profile', 'User.Read'],
         prompt: 'consent'
       },
       undefined, // No user ID needed for this flow
@@ -173,7 +179,7 @@ export class OutlookAdapter implements IAdapter {
       clientId,
       clientSecret,
       redirectUri,
-      scopes: ['https://graph.microsoft.com/Mail.Read', 'offline_access', 'openid', 'profile', 'User.Read'],
+      scopes: ['Mail.Read', 'offline_access', 'openid', 'profile', 'User.Read'],
       tenantId
     };
     
@@ -195,7 +201,7 @@ export class OutlookAdapter implements IAdapter {
   }
 
   public async authenticate(): Promise<void> {
-    if (!this.credentials_ || !this.msalApp_) {
+    if (!this.credentials_ && !this.msalApp_) {
       throw new Error('OutlookAdapter credentials not set. Call initialize(credentials) first.');
     }
 
@@ -212,16 +218,16 @@ export class OutlookAdapter implements IAdapter {
       }
       
       // Otherwise, use refresh token to get a new access token
-      if (!this.credentials_.refreshToken) {
+      if (!this.credentials_?.refreshToken) {
         throw new Error('No refresh token available for authentication');
       }
       
       const tokenRequest = {
-        refreshToken: this.credentials_.refreshToken,
+        refreshToken: this.credentials_?.refreshToken,
         scopes: ['https://graph.microsoft.com/Mail.Read', 'offline_access'],
       };
       
-      const response = await this.msalApp_.acquireTokenByRefreshToken(tokenRequest);
+      const response = await this.msalApp_?.acquireTokenByRefreshToken(tokenRequest);
       
       if (!response || !response.accessToken) {
         throw new Error('Failed to acquire access token');
@@ -249,7 +255,6 @@ export class OutlookAdapter implements IAdapter {
 
   public async fetchEmails(options: FetchOptions): Promise<PaginatedEmailsResponse> {
     this.ensureInitialized();
-    await this.authenticate();
 
     const { 
       limit = 10, 

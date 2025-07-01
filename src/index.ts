@@ -1,21 +1,23 @@
 // Export interfaces
-export * from './interfaces.js';
-export { PaginatedEmailsResponse } from './adapters/IAdapter.js';
+export * from './interfaces.ts';
+export type { PaginatedEmailsResponse } from './adapters/IAdapter.ts';
 
 // Export adapters
-export { GmailAdapter } from './adapters/GmailAdapter.js';
-export { OutlookAdapter } from './adapters/OutlookAdapter.js';
-// export { ImapAdapter } from './adapters/ImapAdapter.js';     // Phase 2
+export { GmailAdapter } from './adapters/GmailAdapter.ts';
+export { OutlookAdapter } from './adapters/OutlookAdapter.ts';
+export { ImapAdapter } from './adapters/ImapAdapter.ts';
 
 // Export services if they are meant to be used directly, or internal utility classes
-export { EmailParserService } from './services/EmailParserService.js'; // Might be internal
+export { EmailParserService } from './services/EmailParserService.ts'; // Might be internal
 
 // Export OAuth functionality with renamed TokenData to avoid naming conflicts
-export { 
+export {
   OAuthService,
   GoogleOAuthProvider,
   OutlookOAuthProvider,
-  MemoryTokenStorage,
+  MemoryTokenStorage
+} from './auth/index.js';
+export type {
   IOAuthProvider,
   ITokenStorage,
   OAuthOptions,
@@ -23,7 +25,7 @@ export {
   OAuthCallbackHandler
 } from './auth/index.js';
 // Re-export TokenData from auth as OAuthTokenData to avoid naming conflict
-export { TokenData as OAuthTokenData } from './auth/interfaces.js';
+export type { TokenData as OAuthTokenData } from './auth/interfaces.js';
 
 // Potentially a main unimail class in the future
 // export { unimail } from './unimail.js';

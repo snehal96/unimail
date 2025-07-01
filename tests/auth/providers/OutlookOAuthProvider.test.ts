@@ -40,7 +40,7 @@ describe('OutlookOAuthProvider', () => {
     provider = new OutlookOAuthProvider();
     options = {
       ...mockData.oauthOptions,
-      scopes: ['https://graph.microsoft.com/Mail.Read']
+      scopes: ['Mail.Read']
     };
   });
   
@@ -58,7 +58,7 @@ describe('OutlookOAuthProvider', () => {
       
       const mockMsalApp = mockOAuth2.mock.results[0].value;
       expect(mockMsalApp.getAuthCodeUrl).toHaveBeenCalledWith({
-        scopes: ['https://graph.microsoft.com/Mail.Read'],
+        scopes: ['Mail.Read'],
         redirectUri: options.redirectUri,
         prompt: "consent",
         state: "test-state"
@@ -89,7 +89,7 @@ describe('OutlookOAuthProvider', () => {
       
       const mockMsalApp = mockOAuth2.mock.results[0].value;
       expect(mockMsalApp.getAuthCodeUrl).toHaveBeenCalledWith({
-        scopes: ['https://graph.microsoft.com/Mail.Read'],
+        scopes: ['Mail.Read'],
         redirectUri: options.redirectUri,
         prompt: 'consent',
         state: "test-state"
@@ -104,7 +104,7 @@ describe('OutlookOAuthProvider', () => {
       const mockMsalApp = mockOAuth2.mock.results[0].value;
       expect(mockMsalApp.acquireTokenByCode).toHaveBeenCalledWith({
         code: 'auth-code',
-        scopes: ['https://graph.microsoft.com/Mail.Read'],
+        scopes: ['Mail.Read'],
         redirectUri: options.redirectUri
       });
       
@@ -126,7 +126,7 @@ describe('OutlookOAuthProvider', () => {
       const mockMsalApp = mockOAuth2.mock.results[0].value;
       expect(mockMsalApp.acquireTokenByRefreshToken).toHaveBeenCalledWith({
         refreshToken: 'refresh-token',
-        scopes: ['https://graph.microsoft.com/Mail.Read']
+        scopes: ['Mail.Read']
       });
       
       expect(result).toEqual({

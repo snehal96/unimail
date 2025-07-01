@@ -1,10 +1,10 @@
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
-import { IAdapter, PaginatedEmailsResponse } from './IAdapter';
-import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.js';
-import { EmailParserService } from '../services/EmailParserService';
-import { OAuthService } from '../auth/OAuthService';
-import { GoogleOAuthProvider } from '../auth/providers/GoogleOAuthProvider';
+import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
+import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.ts';
+import { EmailParserService } from '../services/EmailParserService.ts';
+import { OAuthService } from '../auth/OAuthService.ts';
+import { GoogleOAuthProvider } from '../auth/providers/GoogleOAuthProvider.ts';
 
 export class GmailAdapter implements IAdapter {
   private oauth2Client_?: OAuth2Client;

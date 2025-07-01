@@ -585,7 +585,7 @@ To use the Outlook adapter, you'll need to:
    MICROSOFT_CLIENT_ID=your_client_id
    MICROSOFT_CLIENT_SECRET=your_client_secret
    MICROSOFT_REFRESH_TOKEN=your_refresh_token
-   MICROSOFT_REDIRECT_URI=http://localhost:3000/oauth/callback
+   MICROSOFT_REDIRECT_URI=http://localhost:3000/oauth/oauth2callback
    MICROSOFT_TENANT_ID=optional_tenant_id  # Only needed for specific tenant access
    ```
 

@@ -9,11 +9,12 @@ dotenv.config();
 const {
   MICROSOFT_CLIENT_ID = '',
   MICROSOFT_CLIENT_SECRET = '',
-  MICROSOFT_REFRESH_TOKEN = '',
+  MICROSOFT_ACCESS_TOKEN = '',
+  MICROSOFT_AUTH_CODE = '', // Optional: Use auth code for initial setup
   MICROSOFT_TENANT_ID = '', // Optional
 } = process.env;
 
-if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET || !MICROSOFT_REFRESH_TOKEN) {
+if (!MICROSOFT_CLIENT_ID || !MICROSOFT_CLIENT_SECRET || !MICROSOFT_ACCESS_TOKEN) {
   console.error('Missing required environment variables. Please set:');
   console.error('MICROSOFT_CLIENT_ID, MICROSOFT_CLIENT_SECRET, MICROSOFT_REFRESH_TOKEN');
   process.exit(1);
@@ -28,7 +29,8 @@ async function outlookExample() {
     await outlookAdapter.initialize({
       clientId: MICROSOFT_CLIENT_ID,
       clientSecret: MICROSOFT_CLIENT_SECRET,
-      refreshToken: MICROSOFT_REFRESH_TOKEN,
+      authCode: MICROSOFT_AUTH_CODE,
+      accessToken: MICROSOFT_ACCESS_TOKEN, // Optional: Use access token directly for testing
       tenantId: MICROSOFT_TENANT_ID || undefined, // Optional tenant ID
     });
     

@@ -1,5 +1,5 @@
 
-import { ITokenStorage, TokenData } from '../interfaces';
+import { ITokenStorage, TokenData } from '../interfaces.ts';
 
 /**
  * Simple in-memory implementation of token storage.

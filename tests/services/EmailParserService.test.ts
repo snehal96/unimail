@@ -1,5 +1,5 @@
 
-import { EmailParserService } from '../../src/services/EmailParserService';
+import { EmailParserService } from '../../src/services/EmailParserService.ts';
 import { ParsedMail } from 'mailparser';
 import * as mailparser from 'mailparser';
 

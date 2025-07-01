@@ -1,5 +1,5 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
-import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces';
+import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces.ts';
 
 // Add extended interface for Microsoft authentication response type
 interface MsalAuthResponse {
@@ -28,7 +28,7 @@ export class OutlookOAuthProvider implements IOAuthProvider {
     
     // List of Microsoft Graph API permission scopes for mail access
     const scopes = options.scopes || [
-      'https://graph.microsoft.com/Mail.Read',
+      'Mail.Read',
       'offline_access', // Required for refresh tokens
       'openid',
       'profile',

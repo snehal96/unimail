@@ -7,7 +7,7 @@ dotenv.config();
 const {
   MICROSOFT_CLIENT_ID = '',
   MICROSOFT_CLIENT_SECRET = '',
-  MICROSOFT_REDIRECT_URI = 'http://localhost:3000/oauth/callback',
+  MICROSOFT_REDIRECT_URI = 'http://localhost:3000/oauth/oauth2callback',
   MICROSOFT_TENANT_ID = '', // Optional
 } = process.env;
 
@@ -28,7 +28,7 @@ async function startOutlookOAuth() {
       MICROSOFT_REDIRECT_URI,
       MICROSOFT_TENANT_ID || undefined, // Optional tenant ID
       3000, // Port for the local server
-      '/oauth/callback' // Callback path
+      '/oauth/oauth2callback' // Callback path
     );
     
     console.log('\nPlease visit the following URL in your browser to authorize the application:');

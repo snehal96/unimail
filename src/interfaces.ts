@@ -53,6 +53,7 @@ export interface OutlookCredentials {
   authCode?: string; // Allow authentication with a code rather than a refresh token
   redirectUri?: string; // Required when using authCode
   tenantId?: string; // Optional: Specific tenant for Azure AD authentication
+  accessToken?: string; // Optional: Directly provide an access token for testing or specific flows
 }
 
 // For Phase 2

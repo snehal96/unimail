@@ -8,9 +8,9 @@ import {
   TokenData, 
   ITokenStorage,
   OAuthCallbackHandler
-} from './interfaces';
-import { GoogleOAuthProvider } from './providers/GoogleOAuthProvider';
-import { MemoryTokenStorage } from './storage/MemoryTokenStorage';
+} from './interfaces.ts';
+import { GoogleOAuthProvider } from './providers/GoogleOAuthProvider.ts';
+import { MemoryTokenStorage } from './storage/MemoryTokenStorage.ts';
 
 /**
  * Service to manage OAuth flows for different email providers
@@ -41,7 +41,7 @@ export class OAuthService {
   public async startOAuthFlow(
     options: OAuthOptions, 
     userId?: string,
-    callbackPath: string = '/oauth/callback',
+    callbackPath: string = '/oauth/oauth2callback',
     port: number = 3000
   ): Promise<string> {
     const { authUrl, state } = await this.oauthProvider.initializeOAuthFlow(options);
@@ -188,6 +188,8 @@ export class OAuthService {
             this.pendingCallbacks.delete(state);
           }
         }
+
+        console.log(tokenData)
         
         res.send(`<html><body>
           <h2>Authentication Successful!</h2>
