@@ -1,8 +1,9 @@
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
 import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
-import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment } from '../interfaces.ts';
+import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment, EmailStreamOptions, EmailStreamCallbacks, EmailStreamProgress } from '../interfaces.ts';
 import { EmailParserService } from '../services/EmailParserService.ts';
+import { EmailStreamService } from '../services/EmailStreamService.ts';
 import { OAuthService } from '../auth/OAuthService.ts';
 import { GoogleOAuthProvider } from '../auth/providers/GoogleOAuthProvider.ts';
 
@@ -201,6 +202,9 @@ export class GmailAdapter implements IAdapter {
 
     try {
       if (getAllPages) {
+        // Show deprecation warning
+        console.warn('Warning: getAllPages option is deprecated and may cause memory issues with large datasets. Consider using streamEmails() instead.');
+        
         // Fetch all pages up to limit
         return await this.fetchAllEmailPages(gmailQuery, limit, messageFormat, includeBody, includeAttachments);
       } else {
@@ -221,6 +225,162 @@ export class GmailAdapter implements IAdapter {
          throw new Error(`Gmail authentication error (401). Check your refresh token and API permissions. Original: ${(error as Error).message}`);
       }
       throw new Error(`Failed to fetch Gmail emails: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Stream emails in batches using async generator
+   * Memory-efficient way to process large numbers of emails
+   */
+  public async *streamEmails(options: EmailStreamOptions): AsyncGenerator<NormalizedEmail[], void, unknown> {
+    this.ensureInitialized();
+    await this.authenticate();
+    
+    // Validate options
+    EmailStreamService.validateStreamOptions(options);
+    
+    // Build Gmail query from options
+    const gmailQuery = this.buildGmailQuery(options);
+    
+    // Determine format based on options
+    const messageFormat = this.determineMessageFormat(options);
+    
+    // Create the fetch function for the stream service
+    const fetchPageFn = async (pageToken?: string, pageSize?: number) => {
+      return await this.fetchEmailPage(
+        gmailQuery,
+        pageSize || options.batchSize || 50,
+        messageFormat,
+        options.includeBody !== false,
+        options.includeAttachments !== false,
+        pageToken
+      );
+    };
+    
+    // Use the stream service to create the generator
+    yield* EmailStreamService.createEmailStream(fetchPageFn, options);
+  }
+  
+  /**
+   * Stream emails with callback-based progress tracking
+   * Provides detailed progress information and error handling
+   */
+  public async fetchEmailsStream(options: EmailStreamOptions, callbacks: EmailStreamCallbacks): Promise<void> {
+    this.ensureInitialized();
+    await this.authenticate();
+    
+    // Create enhanced progress tracking
+    let totalCount: number | undefined;
+    let processedCount = 0;
+    
+    const enhancedCallbacks: EmailStreamCallbacks = {
+      ...callbacks,
+      onBatch: async (emails, progress) => {
+        // Enhance progress with Gmail-specific information
+        const enhancedProgress: EmailStreamProgress = {
+          ...progress,
+          total: totalCount,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, progress.current)
+        };
+        
+        if (callbacks.onBatch) {
+          await callbacks.onBatch(emails, enhancedProgress);
+        }
+      },
+      onProgress: async (progress) => {
+        const enhancedProgress: EmailStreamProgress = {
+          ...progress,
+          total: totalCount,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, progress.current)
+        };
+        
+        if (callbacks.onProgress) {
+          await callbacks.onProgress(enhancedProgress);
+        }
+      }
+    };
+    
+    // Create stream generator and process it
+    const streamGenerator = this.streamEmails(options);
+    
+    // Get total count from first batch if available
+    const firstBatch = await streamGenerator.next();
+    if (!firstBatch.done && firstBatch.value.length > 0) {
+      // Try to get total count - this is a best effort
+      try {
+        const countResponse = await this.gmail_!.users.messages.list({
+          userId: 'me',
+          q: this.buildGmailQuery(options) || undefined,
+          maxResults: 1
+        });
+                 totalCount = countResponse.data.resultSizeEstimate || undefined;
+      } catch (error) {
+        // Ignore errors getting total count
+        console.warn('Could not get total email count:', error);
+      }
+      
+      // Process the first batch we already retrieved
+      if (enhancedCallbacks.onBatch) {
+        const progress: EmailStreamProgress = {
+          current: firstBatch.value.length,
+          total: totalCount,
+          batchCount: 1,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, firstBatch.value.length)
+        };
+        await enhancedCallbacks.onBatch(firstBatch.value, progress);
+      }
+      
+      // Create a new generator that includes the first batch
+      const remainingGenerator = async function* () {
+        yield firstBatch.value;
+        yield* streamGenerator;
+      };
+      
+      await EmailStreamService.processEmailStream(remainingGenerator(), enhancedCallbacks);
+    } else {
+      // No emails found
+      await EmailStreamService.processEmailStream(streamGenerator, enhancedCallbacks);
+    }
+  }
+  
+  /**
+   * Helper method to build Gmail query from stream options
+   */
+  private buildGmailQuery(options: EmailStreamOptions): string {
+    let gmailQuery = options.query || '';
+
+    if (options.since) {
+      const sinceDate = typeof options.since === 'string' ? new Date(options.since) : options.since;
+      gmailQuery += ` after:${sinceDate.getFullYear()}/${sinceDate.getMonth() + 1}/${sinceDate.getDate()}`;
+    }
+    if (options.before) {
+      const beforeDate = typeof options.before === 'string' ? new Date(options.before) : options.before;
+      gmailQuery += ` before:${beforeDate.getFullYear()}/${beforeDate.getMonth() + 1}/${beforeDate.getDate()}`;
+    }
+    if (options.unreadOnly) {
+      gmailQuery += ' is:unread';
+    }
+    
+    return gmailQuery.trim();
+  }
+  
+  /**
+   * Helper method to determine message format from options
+   */
+  private determineMessageFormat(options: EmailStreamOptions): 'raw' | 'full' | 'metadata' {
+    if (options.format) {
+      return options.format;
+    }
+    
+    const includeBody = options.includeBody !== false;
+    const includeAttachments = options.includeAttachments !== false;
+    
+    if (!includeBody && !includeAttachments) {
+      return 'metadata';
+    } else if (includeBody && includeAttachments) {
+      return 'raw';
+    } else {
+      return 'full';
     }
   }
 

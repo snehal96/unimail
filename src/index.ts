@@ -9,6 +9,7 @@ export { ImapAdapter } from './adapters/ImapAdapter.ts';
 
 // Export services if they are meant to be used directly, or internal utility classes
 export { EmailParserService } from './services/EmailParserService.ts'; // Might be internal
+export { EmailStreamService } from './services/EmailStreamService.ts'; // New streaming service
 
 // Export OAuth functionality with renamed TokenData to avoid naming conflicts
 export {

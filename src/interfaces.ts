@@ -38,6 +38,42 @@ export interface FetchOptions {
   getAllPages?: boolean; // Whether to automatically fetch all pages (up to limit)
 }
 
+// Streaming-specific interfaces
+export interface EmailStreamOptions extends Omit<FetchOptions, 'getAllPages' | 'pageSize' | 'limit'> {
+  batchSize?: number; // Number of emails per batch (default: 50)
+  maxEmails?: number; // Maximum total emails to process (optional)
+}
+
+export interface EmailStreamProgress {
+  current: number; // Current number of emails processed
+  total?: number; // Total number of emails (if available from provider)
+  batchCount: number; // Number of batches processed
+  estimatedRemaining?: number; // Estimated remaining emails
+}
+
+export interface EmailStreamCallbacks {
+  onBatch?: (emails: NormalizedEmail[], progress: EmailStreamProgress) => Promise<void> | void;
+  onProgress?: (progress: EmailStreamProgress) => Promise<void> | void;
+  onError?: (error: Error, progress: EmailStreamProgress) => Promise<void> | void;
+  onComplete?: (summary: EmailStreamSummary) => Promise<void> | void;
+}
+
+export interface EmailStreamSummary {
+  totalProcessed: number;
+  totalBatches: number;
+  errors: number;
+  startTime: Date;
+  endTime: Date;
+  duration: number; // milliseconds
+}
+
+export interface EmailStreamBatch {
+  emails: NormalizedEmail[];
+  batchNumber: number;
+  progress: EmailStreamProgress;
+  isLastBatch: boolean;
+}
+
 export interface GmailCredentials {
   clientId: string;
   clientSecret: string;
