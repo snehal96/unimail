@@ -1,6 +1,6 @@
 {
   "name": "unimail",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "description": "Unified email fetching & document extraction layer for modern web apps",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
