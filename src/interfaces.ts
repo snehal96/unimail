@@ -107,3 +107,120 @@ export interface TokenData {
   tokenType?: string;
   idToken?: string;
 }
+
+// Gmail Sync/History API interfaces
+export interface HistoryRecord {
+  id: string; // History ID
+  messages?: Array<{
+    id: string;
+    threadId: string;
+  }>;
+  messagesAdded?: Array<{
+    message: {
+      id: string;
+      threadId: string;
+      labelIds?: string[];
+    };
+  }>;
+  messagesDeleted?: Array<{
+    message: {
+      id: string;
+      threadId: string;
+    };
+  }>;
+  labelsAdded?: Array<{
+    message: {
+      id: string;
+      threadId: string;
+    };
+    labelIds: string[];
+  }>;
+  labelsRemoved?: Array<{
+    message: {
+      id: string;
+      threadId: string;
+    };
+    labelIds: string[];
+  }>;
+}
+
+export interface HistoryResponse {
+  history: HistoryRecord[];
+  nextPageToken?: string;
+  historyId: string; // Current history ID
+}
+
+export interface PushNotificationConfig {
+  topicName: string; // Google Cloud Pub/Sub topic name (e.g., "projects/myproject/topics/gmail-push")
+  webhookUrl: string; // Your webhook endpoint URL
+  labelIds?: string[]; // Optional: only watch specific labels
+  labelFilterAction?: 'include' | 'exclude'; // How to apply label filter
+}
+
+export interface PushNotificationSetup {
+  historyId: string; // Starting history ID
+  expiration: number; // Unix timestamp when watch expires
+  topicName: string;
+}
+
+export interface SyncState {
+  historyId: string; // Last processed history ID
+  lastSyncTime: Date; // When sync was last performed
+  totalChanges: number; // Total changes processed
+}
+
+export interface SyncOptions {
+  startHistoryId?: string; // Start from specific history ID
+  maxResults?: number; // Max history records per request (default: 100)
+  labelIds?: string[]; // Filter by specific labels
+  includeDeleted?: boolean; // Include deleted messages (default: true)
+}
+
+export interface SyncResult {
+  processedHistoryRecords: number;
+  addedEmails: NormalizedEmail[];
+  deletedEmailIds: string[];
+  updatedEmails: NormalizedEmail[];
+  newHistoryId: string;
+  hasMoreChanges: boolean;
+  nextPageToken?: string;
+}
+
+// Enhanced Pagination Interfaces
+export interface PaginationMetadata {
+  currentPage: number;
+  pageSize: number;
+  totalCount?: number;
+  estimatedTotalPages?: number;
+  nextPageToken?: string;
+  previousPageToken?: string;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  isFirstPage: boolean;
+  isLastPage: boolean;
+}
+
+export interface PaginationOptions {
+  pageSize?: number;
+  pageToken?: string;
+  limit?: number;
+  getAllPages?: boolean;
+}
+
+export interface PaginatedResponse<T> {
+  data: T[];
+  pagination: PaginationMetadata;
+  query?: string;
+  totalFetched: number;
+  fetchTime: Date;
+}
+
+export interface PaginationState {
+  currentPageToken?: string;
+  previousPageTokens: string[];
+  currentPage: number;
+  pageSize: number;
+  totalFetched: number;
+  query?: string;
+  options: FetchOptions;
+}

@@ -1,7 +1,22 @@
 import { google, gmail_v1 } from 'googleapis';
 import { OAuth2Client, Credentials } from 'google-auth-library';
 import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
-import { NormalizedEmail, FetchOptions, GmailCredentials, Attachment, EmailStreamOptions, EmailStreamCallbacks, EmailStreamProgress } from '../interfaces.ts';
+import { 
+  NormalizedEmail, 
+  FetchOptions, 
+  GmailCredentials, 
+  Attachment, 
+  EmailStreamOptions, 
+  EmailStreamCallbacks, 
+  EmailStreamProgress,
+  HistoryResponse,
+  HistoryRecord,
+  PushNotificationConfig,
+  PushNotificationSetup,
+  SyncOptions,
+  SyncResult,
+  SyncState
+} from '../interfaces.ts';
 import { EmailParserService } from '../services/EmailParserService.ts';
 import { EmailStreamService } from '../services/EmailStreamService.ts';
 import { OAuthService } from '../auth/OAuthService.ts';
@@ -462,14 +477,15 @@ export class GmailAdapter implements IAdapter {
     limit: number,
     messageFormat: 'raw' | 'full' | 'metadata',
     includeBody: boolean,
-    includeAttachments: boolean
+    includeAttachments: boolean,
+    size?: number
   ): Promise<PaginatedEmailsResponse> {
     const allEmails: NormalizedEmail[] = [];
     let nextPageToken: string | undefined;
     let totalCount: number | undefined;
     
     // Use a reasonable page size (Gmail API default is 100)
-    const pageSize = Math.min(limit, 100);
+    const pageSize = size || Math.min(limit, 100);
     
     do {
       const response = await this.fetchEmailPage(
@@ -610,5 +626,243 @@ export class GmailAdapter implements IAdapter {
     }
 
     return normalized;
+  }
+
+  // =====================================================
+  // SYNC CAPABILITIES - Gmail History API & Push Notifications
+  // =====================================================
+
+  /**
+   * Get the current history ID for this Gmail account.
+   * This serves as a starting point for tracking changes.
+   */
+  public async getCurrentHistoryId(): Promise<string> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    try {
+      // Get the profile to get the current history ID
+      const profileResponse = await this.gmail_!.users.getProfile({
+        userId: 'me'
+      });
+
+      return profileResponse.data.historyId!;
+    } catch (error) {
+      throw new Error(`Failed to get current history ID: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get history records since the specified history ID.
+   * This allows you to see what changed in the mailbox.
+   */
+  public async getHistory(startHistoryId: string, options: SyncOptions = {}): Promise<HistoryResponse> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    const { maxResults = 100, labelIds, includeDeleted = true } = options;
+
+    try {
+      // Gmail API expects labelId as a single string, not an array
+      // If multiple labels are provided, we'll need to make multiple calls or handle differently
+      const labelId = labelIds && labelIds.length > 0 ? labelIds[0] : undefined;
+      
+      const historyResponse = await this.gmail_!.users.history.list({
+        userId: 'me',
+        startHistoryId,
+        maxResults,
+        labelId,
+        historyTypes: includeDeleted ? ['messageAdded', 'messageDeleted', 'labelAdded', 'labelRemoved'] : ['messageAdded', 'labelAdded', 'labelRemoved']
+      });
+
+      const history: HistoryRecord[] = (historyResponse.data.history || []).map((record: any) => ({
+        id: record.id!,
+        messages: record.messages,
+        messagesAdded: record.messagesAdded,
+        messagesDeleted: record.messagesDeleted,
+        labelsAdded: record.labelsAdded,
+        labelsRemoved: record.labelsRemoved
+      }));
+
+      return {
+        history,
+        nextPageToken: historyResponse.data.nextPageToken || undefined,
+        historyId: historyResponse.data.historyId!
+      };
+    } catch (error) {
+      // Handle case where start history ID is too old
+      if ((error as any).code === 404 || (error as any).message?.includes('historyId')) {
+        throw new Error(`History ID ${startHistoryId} is too old or invalid. Use getCurrentHistoryId() to get a fresh starting point.`);
+      }
+      throw new Error(`Failed to get history: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Get a specific email by its ID.
+   * Useful for fetching full details of emails found in history records.
+   */
+  public async getEmailById(id: string): Promise<NormalizedEmail | null> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    try {
+      const messageResponse = await this.gmail_!.users.messages.get({
+        userId: 'me',
+        id,
+        format: 'raw' // Use raw format for complete parsing
+      });
+
+      if (!messageResponse.data) {
+        return null;
+      }
+
+      let normalized: NormalizedEmail;
+
+      if (messageResponse.data.raw) {
+        // Process using raw email format
+        const rawEmail = Buffer.from(messageResponse.data.raw, 'base64').toString('utf-8');
+        normalized = await this.emailParserService.parseEmail(rawEmail, messageResponse.data.id!, 'gmail');
+        
+        normalized.threadId = messageResponse.data.threadId || normalized.threadId;
+        normalized.labels = messageResponse.data.labelIds || normalized.labels;
+      } else {
+        // Fallback to structured parsing
+        normalized = await this.parseStructuredMessage(messageResponse.data, true, true);
+      }
+
+      return normalized;
+    } catch (error) {
+      if ((error as any).code === 404) {
+        return null; // Email not found or no access
+      }
+      throw new Error(`Failed to get email by ID ${id}: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Set up Gmail push notifications to receive real-time updates.
+   * Requires a Google Cloud Pub/Sub topic and proper webhook setup.
+   */
+  public async setupPushNotifications(config: PushNotificationConfig): Promise<PushNotificationSetup> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    try {
+      const watchRequest: gmail_v1.Params$Resource$Users$Watch = {
+        userId: 'me',
+        requestBody: {
+          topicName: config.topicName,
+          labelIds: config.labelIds,
+          labelFilterAction: config.labelFilterAction || 'include'
+        }
+      };
+
+      const watchResponse = await this.gmail_!.users.watch(watchRequest);
+
+      return {
+        historyId: watchResponse.data.historyId!,
+        expiration: parseInt(watchResponse.data.expiration!),
+        topicName: config.topicName
+      };
+    } catch (error) {
+      throw new Error(`Failed to setup push notifications: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Stop Gmail push notifications.
+   */
+  public async stopPushNotifications(): Promise<void> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    try {
+      await this.gmail_!.users.stop({
+        userId: 'me'
+      });
+    } catch (error) {
+      throw new Error(`Failed to stop push notifications: ${(error as Error).message}`);
+    }
+  }
+
+  /**
+   * Process sync changes from a given history ID.
+   * This is a higher-level method that processes history records and returns structured results.
+   */
+  public async processSync(options: SyncOptions = {}): Promise<SyncResult> {
+    this.ensureInitialized();
+    await this.authenticate();
+
+    const { startHistoryId, maxResults = 100 } = options;
+
+    if (!startHistoryId) {
+      throw new Error('startHistoryId is required for processSync');
+    }
+
+    try {
+      const historyResponse = await this.getHistory(startHistoryId, options);
+      
+      const addedEmails: NormalizedEmail[] = [];
+      const deletedEmailIds: string[] = [];
+      const updatedEmails: NormalizedEmail[] = [];
+      const processedIds = new Set<string>();
+
+      // Process history records
+      for (const record of historyResponse.history) {
+        // Handle new messages
+        if (record.messagesAdded) {
+          for (const added of record.messagesAdded) {
+            if (!processedIds.has(added.message.id)) {
+              const email = await this.getEmailById(added.message.id);
+              if (email) {
+                addedEmails.push(email);
+                processedIds.add(added.message.id);
+              }
+            }
+          }
+        }
+
+        // Handle deleted messages
+        if (record.messagesDeleted) {
+          for (const deleted of record.messagesDeleted) {
+            if (!processedIds.has(deleted.message.id)) {
+              deletedEmailIds.push(deleted.message.id);
+              processedIds.add(deleted.message.id);
+            }
+          }
+        }
+
+        // Handle label changes (treat as updates)
+        if (record.labelsAdded || record.labelsRemoved) {
+          const labelChanges = [
+            ...(record.labelsAdded || []),
+            ...(record.labelsRemoved || [])
+          ];
+
+          for (const change of labelChanges) {
+            if (!processedIds.has(change.message.id)) {
+              const email = await this.getEmailById(change.message.id);
+              if (email) {
+                updatedEmails.push(email);
+                processedIds.add(change.message.id);
+              }
+            }
+          }
+        }
+      }
+
+      return {
+        processedHistoryRecords: historyResponse.history.length,
+        addedEmails,
+        deletedEmailIds,
+        updatedEmails,
+        newHistoryId: historyResponse.historyId,
+        hasMoreChanges: !!historyResponse.nextPageToken,
+        nextPageToken: historyResponse.nextPageToken
+      };
+    } catch (error) {
+      throw new Error(`Failed to process sync: ${(error as Error).message}`);
+    }
   }
 }

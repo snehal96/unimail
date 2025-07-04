@@ -1,10 +1,11 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ConfidentialClientApplication } from '@azure/msal-node';
 import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
-import { NormalizedEmail, FetchOptions, OutlookCredentials, Attachment } from '../interfaces.js';
+import { NormalizedEmail, FetchOptions, OutlookCredentials, Attachment, EmailStreamOptions, EmailStreamCallbacks, EmailStreamProgress } from '../interfaces.js';
 import { EmailParserService } from '../services/EmailParserService.ts';
 import { OAuthService } from '../auth/OAuthService.ts';
 import { OutlookOAuthProvider } from '../auth/providers/OutlookOAuthProvider.ts';
+import { EmailStreamService } from '../services/EmailStreamService.ts';
 
 // Type definition for graph messages
 interface OutlookMessage {
@@ -501,5 +502,136 @@ export class OutlookAdapter implements IAdapter {
   private extractSkipTokenFromNextLink(nextLink: string): string | undefined {
     const match = nextLink.match(/\$skiptoken=([^&]+)/);
     return match ? match[1] : undefined;
+  }
+
+  /**
+   * Stream emails using async generator
+   * This method provides memory-efficient streaming of emails
+   */
+  public async *streamEmails(options: EmailStreamOptions): AsyncGenerator<NormalizedEmail[], void, unknown> {
+    this.ensureInitialized();
+    await this.authenticate();
+    
+    // Validate options
+    EmailStreamService.validateStreamOptions(options);
+    
+    // Build Outlook filter and search term from options
+    const { filter, searchTerm } = this.buildOutlookQueryFromStreamOptions(options);
+    
+    // Create the fetch function for the stream service
+    const fetchPageFn = async (pageToken?: string, pageSize?: number) => {
+      return await this.fetchEmailPage(
+        filter,
+        searchTerm,
+        pageSize || options.batchSize || 50,
+        options.includeBody !== false,
+        options.includeAttachments !== false,
+        pageToken
+      );
+    };
+    
+    // Use the stream service to create the generator
+    yield* EmailStreamService.createEmailStream(fetchPageFn, options);
+  }
+
+  /**
+   * Stream emails with callback-based progress tracking
+   * Provides detailed progress information and error handling
+   */
+  public async fetchEmailsStream(options: EmailStreamOptions, callbacks: EmailStreamCallbacks): Promise<void> {
+    this.ensureInitialized();
+    await this.authenticate();
+    
+    // Create enhanced progress tracking
+    let totalCount: number | undefined;
+    
+    const enhancedCallbacks: EmailStreamCallbacks = {
+      ...callbacks,
+      onBatch: async (emails, progress) => {
+        // Enhance progress with Outlook-specific information
+        const enhancedProgress: EmailStreamProgress = {
+          ...progress,
+          total: totalCount,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, progress.current)
+        };
+        
+        if (callbacks.onBatch) {
+          await callbacks.onBatch(emails, enhancedProgress);
+        }
+      },
+      onProgress: async (progress) => {
+        const enhancedProgress: EmailStreamProgress = {
+          ...progress,
+          total: totalCount,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, progress.current)
+        };
+        
+        if (callbacks.onProgress) {
+          await callbacks.onProgress(enhancedProgress);
+        }
+      }
+    };
+    
+    // Create stream generator and process it
+    const streamGenerator = this.streamEmails(options);
+    
+    // Get total count from first batch if available
+    const firstBatch = await streamGenerator.next();
+    if (!firstBatch.done && firstBatch.value.length > 0) {
+      // Try to get total count - this is a best effort for Outlook
+      // Note: Microsoft Graph API doesn't provide exact counts easily
+      // We'll skip this optimization for now
+      
+      // Process the first batch we already retrieved
+      if (enhancedCallbacks.onBatch) {
+        const progress: EmailStreamProgress = {
+          current: firstBatch.value.length,
+          total: totalCount,
+          batchCount: 1,
+          estimatedRemaining: EmailStreamService.calculateEstimatedRemaining(totalCount, firstBatch.value.length)
+        };
+        await enhancedCallbacks.onBatch(firstBatch.value, progress);
+      }
+      
+      // Create a new generator that includes the first batch
+      const remainingGenerator = async function* () {
+        yield firstBatch.value;
+        yield* streamGenerator;
+      };
+      
+      await EmailStreamService.processEmailStream(remainingGenerator(), enhancedCallbacks);
+    } else {
+      // No emails found
+      await EmailStreamService.processEmailStream(streamGenerator, enhancedCallbacks);
+    }
+  }
+
+  /**
+   * Helper method to build Outlook query from stream options
+   */
+  private buildOutlookQueryFromStreamOptions(options: EmailStreamOptions): { filter: string; searchTerm?: string } {
+    const filters: string[] = [];
+    
+    // Date filters
+    if (options.since) {
+      const sinceDate = typeof options.since === 'string' ? new Date(options.since) : options.since;
+      filters.push(`receivedDateTime ge ${sinceDate.toISOString()}`);
+    }
+    if (options.before) {
+      const beforeDate = typeof options.before === 'string' ? new Date(options.before) : options.before;
+      filters.push(`receivedDateTime le ${beforeDate.toISOString()}`);
+    }
+    
+    // Unread filter
+    if (options.unreadOnly) {
+      filters.push('isRead eq false');
+    }
+    
+    const filter = filters.length > 0 ? filters.join(' and ') : '';
+    
+    // Search term (for content search)
+    const searchTerm = options.query || undefined;
+    
+    return { filter, searchTerm };
   }
 }

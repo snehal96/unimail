@@ -24,7 +24,12 @@ Unimail is an open-source Node.js library that provides a standardized way to fe
     *   Standardized schema across all providers
     *   Gmail labels and Outlook categories unified as `labels` field
     *   Consistent date, sender, recipient handling
-*   **📄 Pagination Support:** Complete pagination with `nextPageToken` for handling large email volumes
+*   **📄 Enhanced Pagination Support:** 
+    *   Complete pagination with `nextPageToken` for handling large email volumes
+    *   New `PaginationHelper` utility for easy navigation
+    *   Automatic all-pages fetching with `getAllPages` option
+    *   Cursor-based pagination with metadata (current page, total pages, etc.)
+    *   Async iterators for processing large datasets
 *   **🔍 Advanced Search & Filtering:**
     *   Date range queries (`since`, `before`)
     *   Provider-specific search queries
@@ -324,29 +329,194 @@ async function workWithCategories() {
 
 ### Advanced Pagination
 
+Unimail provides comprehensive pagination support with multiple approaches for different use cases:
+
+#### 1. Basic Manual Pagination
+
 ```typescript
-async function paginationExample() {
+async function basicPagination() {
   const gmailAdapter = new GmailAdapter();
   await gmailAdapter.initialize(credentials);
 
-  let allEmails = [];
   let pageToken = undefined;
+  let pageNumber = 1;
   
   do {
-    const { emails, nextPageToken } = await gmailAdapter.fetchEmails({
-      limit: 50,
-      pageToken,
+    const { emails, nextPageToken, totalCount } = await gmailAdapter.fetchEmails({
+      pageSize: 20,        // Emails per page
+      pageToken,           // Token for current page
       query: 'has:attachment',
-      includeBody: false, // Faster processing
+      includeBody: false,  // Faster processing
     });
     
-    allEmails.push(...emails);
-    pageToken = nextPageToken;
+    console.log(`Page ${pageNumber}: ${emails.length} emails`);
+    if (totalCount) {
+      console.log(`Total available: ~${totalCount} emails`);
+    }
     
-    console.log(`Fetched ${emails.length} emails, total: ${allEmails.length}`);
+    pageToken = nextPageToken;
+    pageNumber++;
+    
   } while (pageToken);
+}
+```
 
-  console.log(`Total emails with attachments: ${allEmails.length}`);
+#### 2. Using PaginationHelper (Recommended)
+
+```typescript
+import { GmailAdapter, createPaginationHelper } from 'unimail';
+
+async function paginationHelperExample() {
+  const gmailAdapter = new GmailAdapter();
+  await gmailAdapter.initialize(credentials);
+
+  // Create pagination helper
+  const paginationHelper = createPaginationHelper(gmailAdapter, {
+    pageSize: 15,
+    query: 'label:inbox',
+    includeBody: false,
+    includeAttachments: false,
+  });
+
+  // Navigate through pages
+  const page1 = await paginationHelper.fetchCurrentPage();
+  console.log(`Page 1: ${page1.data.length} emails`);
+  console.log(`Has next page: ${page1.pagination.hasNextPage}`);
+
+  if (page1.pagination.hasNextPage) {
+    const page2 = await paginationHelper.fetchNextPage();
+    console.log(`Page 2: ${page2?.data.length} emails`);
+    
+    // Go back to previous page
+    if (page2?.pagination.hasPreviousPage) {
+      const backToPage1 = await paginationHelper.fetchPreviousPage();
+      console.log(`Back to Page 1: ${backToPage1?.data.length} emails`);
+    }
+  }
+}
+```
+
+#### 3. Automatic All-Pages Fetching
+
+```typescript
+async function fetchAllPages() {
+  const gmailAdapter = new GmailAdapter();
+  await gmailAdapter.initialize(credentials);
+
+  const { emails, totalCount } = await gmailAdapter.fetchEmails({
+    limit: 100,          // Maximum total emails to fetch
+    pageSize: 25,        // Emails per API call
+    getAllPages: true,   // Automatically fetch all pages
+    query: 'has:attachment',
+    includeBody: false,
+  });
+
+  console.log(`Fetched ${emails.length} emails total across all pages`);
+  console.log(`Total available: ~${totalCount} emails`);
+}
+```
+
+#### 4. Async Iterator for Large Datasets
+
+```typescript
+async function processLargeDataset() {
+  const gmailAdapter = new GmailAdapter();
+  await gmailAdapter.initialize(credentials);
+
+  const paginationHelper = createPaginationHelper(gmailAdapter, {
+    pageSize: 50,
+    query: 'label:inbox',
+    includeBody: false,
+  });
+
+  let totalProcessed = 0;
+  
+  // Process each page as it's fetched
+  for await (const page of paginationHelper.iterateAllPages()) {
+    console.log(`Processing page ${page.pagination.currentPage}: ${page.data.length} emails`);
+    
+    // Process emails in this page
+    page.data.forEach(email => {
+      // Your processing logic here
+      totalProcessed++;
+    });
+  }
+
+  console.log(`Processed ${totalProcessed} emails total`);
+}
+```
+
+#### 5. Building Paginated API Responses
+
+```typescript
+import { PaginationUtils } from 'unimail';
+
+async function buildPaginatedAPI(request: {
+  page?: number;
+  pageSize?: number;
+  query?: string;
+  pageToken?: string;
+}) {
+  const gmailAdapter = new GmailAdapter();
+  await gmailAdapter.initialize(credentials);
+
+  const { emails, nextPageToken, totalCount } = await gmailAdapter.fetchEmails({
+    pageSize: request.pageSize || 20,
+    pageToken: request.pageToken,
+    query: request.query || '',
+    includeBody: true,
+    includeAttachments: false,
+  });
+
+  // Calculate pagination metadata
+  const currentPage = request.page || 1;
+  const pagination = PaginationUtils.calculatePaginationMetadata(
+    currentPage,
+    request.pageSize || 20,
+    totalCount,
+    !!nextPageToken,
+    currentPage > 1
+  );
+
+  return {
+    status: 'success',
+    data: emails,
+    pagination: {
+      ...pagination,
+      nextPageToken,
+    },
+    metadata: {
+      query: request.query,
+      fetchTime: new Date().toISOString(),
+      totalFetched: emails.length,
+    },
+  };
+}
+```
+
+#### Pagination Options
+
+| Option | Description | Default |
+|--------|-------------|---------|
+| `pageSize` | Number of emails per page | 20 |
+| `pageToken` | Token for fetching specific page | `undefined` |
+| `limit` | Maximum total emails to fetch | No limit |
+| `getAllPages` | Automatically fetch all pages up to limit | `false` |
+
+#### Pagination Response
+
+```typescript
+interface PaginationMetadata {
+  currentPage: number;
+  pageSize: number;
+  totalCount?: number;
+  estimatedTotalPages?: number;
+  nextPageToken?: string;
+  previousPageToken?: string;
+  hasNextPage: boolean;
+  hasPreviousPage: boolean;
+  isFirstPage: boolean;
+  isLastPage: boolean;
 }
 ```
 
@@ -735,6 +905,398 @@ async function processWithRecovery() {
 
 ---
 
+## 🔄 Gmail Sync & Real-time Updates
+
+### Overview
+
+Gmail sync capabilities enable real-time synchronization with Gmail accounts using the Gmail History API and Push Notifications. This allows you to:
+
+- **Track Changes**: Monitor additions, deletions, and label changes in real-time
+- **Efficient Sync**: Only fetch changes since the last sync, not all emails
+- **Push Notifications**: Receive instant webhooks when changes occur
+- **Persistent State**: Maintain sync state across application restarts
+
+### Quick Start
+
+```typescript
+import { GmailAdapter } from 'unimail';
+
+const gmailAdapter = new GmailAdapter();
+await gmailAdapter.initialize(credentials);
+
+// 1. Get starting point for sync
+const historyId = await gmailAdapter.getCurrentHistoryId();
+console.log(`Starting sync from history ID: ${historyId}`);
+
+// 2. Later, check for changes
+const syncResult = await gmailAdapter.processSync({
+  startHistoryId: historyId,
+  maxResults: 50
+});
+
+console.log(`Found ${syncResult.addedEmails.length} new emails`);
+console.log(`${syncResult.deletedEmailIds.length} emails deleted`);
+console.log(`${syncResult.updatedEmails.length} emails updated`);
+```
+
+### Core Sync Methods
+
+#### `getCurrentHistoryId(): Promise<string>`
+Get the current history ID to start tracking changes.
+
+```typescript
+const historyId = await gmailAdapter.getCurrentHistoryId();
+// Store this ID to track future changes
+```
+
+#### `getHistory(startHistoryId: string, options?: SyncOptions): Promise<HistoryResponse>`
+Get raw history records since a specific history ID.
+
+```typescript
+const historyResponse = await gmailAdapter.getHistory(startHistoryId, {
+  maxResults: 100,
+  labelIds: ['INBOX'],
+  includeDeleted: true
+});
+
+// Process individual history records
+for (const record of historyResponse.history) {
+  if (record.messagesAdded) {
+    console.log(`${record.messagesAdded.length} messages added`);
+  }
+  if (record.messagesDeleted) {
+    console.log(`${record.messagesDeleted.length} messages deleted`);
+  }
+}
+```
+
+#### `getEmailById(id: string): Promise<NormalizedEmail | null>`
+Fetch a specific email by ID (useful for processing history records).
+
+```typescript
+const email = await gmailAdapter.getEmailById('18c2e1b2d4f5a3b1');
+if (email) {
+  console.log(`Email: ${email.subject} from ${email.from}`);
+}
+```
+
+#### `processSync(options: SyncOptions): Promise<SyncResult>`
+High-level method that processes history and returns structured results.
+
+```typescript
+const syncResult = await gmailAdapter.processSync({
+  startHistoryId: lastKnownHistoryId,
+  maxResults: 50,
+  includeDeleted: true
+});
+
+// Process new emails
+for (const email of syncResult.addedEmails) {
+  await processNewEmail(email);
+}
+
+// Handle deletions
+for (const deletedId of syncResult.deletedEmailIds) {
+  await removeEmailFromDatabase(deletedId);
+}
+
+// Handle updates (label changes)
+for (const email of syncResult.updatedEmails) {
+  await updateEmailLabels(email.id, email.labels);
+}
+
+// Update your sync state
+lastKnownHistoryId = syncResult.newHistoryId;
+```
+
+### Push Notifications
+
+Set up real-time push notifications to receive instant updates when changes occur.
+
+#### Prerequisites
+1. **Google Cloud Pub/Sub Topic**: Create a topic in Google Cloud Console
+2. **Service Account**: Grant Gmail API publish permissions to the topic
+3. **Webhook Endpoint**: Set up an HTTPS endpoint to receive notifications
+
+#### Setup Push Notifications
+
+```typescript
+const pushSetup = await gmailAdapter.setupPushNotifications({
+  topicName: 'projects/your-project-id/topics/gmail-push',
+  webhookUrl: 'https://your-domain.com/webhook/gmail',
+  labelIds: ['INBOX'], // Optional: only watch specific labels
+  labelFilterAction: 'include'
+});
+
+console.log(`Push notifications active until: ${new Date(pushSetup.expiration * 1000)}`);
+```
+
+#### Webhook Handler
+
+```typescript
+import express from 'express';
+
+const app = express();
+
+app.post('/webhook/gmail', async (req, res) => {
+  try {
+    // Parse Pub/Sub message
+    const message = req.body.message;
+    const data = JSON.parse(Buffer.from(message.data, 'base64').toString());
+    
+    const { emailAddress, historyId } = data;
+    console.log(`Changes detected for ${emailAddress} since ${historyId}`);
+    
+    // Trigger sync for this user
+    await performSyncForUser(emailAddress, historyId);
+    
+    res.status(200).send('OK');
+  } catch (error) {
+    console.error('Webhook error:', error);
+    res.status(500).send('Error');
+  }
+});
+```
+
+### Real-World Sync Patterns
+
+#### Continuous Background Sync
+
+```typescript
+class GmailSyncService {
+  private syncState: Map<string, string> = new Map(); // userId -> historyId
+  
+  async startContinuousSync(userId: string, gmailAdapter: GmailAdapter) {
+    // Initialize sync state
+    if (!this.syncState.has(userId)) {
+      const historyId = await gmailAdapter.getCurrentHistoryId();
+      this.syncState.set(userId, historyId);
+    }
+    
+    // Sync loop
+    while (true) {
+      try {
+        const lastHistoryId = this.syncState.get(userId)!;
+        const syncResult = await gmailAdapter.processSync({
+          startHistoryId: lastHistoryId,
+          maxResults: 50
+        });
+        
+        // Process changes
+        await this.processChanges(userId, syncResult);
+        
+        // Update state
+        this.syncState.set(userId, syncResult.newHistoryId);
+        
+        // Wait before next sync if no more changes
+        if (!syncResult.hasMoreChanges) {
+          await this.sleep(30000); // 30 seconds
+        }
+        
+      } catch (error) {
+        console.error(`Sync error for user ${userId}:`, error);
+        await this.sleep(60000); // Wait 1 minute on error
+      }
+    }
+  }
+  
+  private async processChanges(userId: string, syncResult: SyncResult) {
+    // Save new emails to database
+    if (syncResult.addedEmails.length > 0) {
+      await this.database.emails.insertMany(
+        syncResult.addedEmails.map(email => ({
+          userId,
+          gmailId: email.id,
+          subject: email.subject,
+          from: email.from,
+          date: email.date,
+          labels: email.labels
+        }))
+      );
+    }
+    
+    // Remove deleted emails
+    if (syncResult.deletedEmailIds.length > 0) {
+      await this.database.emails.deleteMany({
+        userId,
+        gmailId: { $in: syncResult.deletedEmailIds }
+      });
+    }
+    
+    // Update labels for changed emails
+    for (const email of syncResult.updatedEmails) {
+      await this.database.emails.updateOne(
+        { userId, gmailId: email.id },
+        { $set: { labels: email.labels } }
+      );
+    }
+  }
+  
+  private sleep(ms: number): Promise<void> {
+    return new Promise(resolve => setTimeout(resolve, ms));
+  }
+}
+```
+
+#### Express.js Integration with Real-time Updates
+
+```typescript
+import express from 'express';
+import { GmailAdapter } from 'unimail';
+
+const app = express();
+
+// Server-Sent Events for real-time sync updates
+app.get('/api/sync-status/:userId', async (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    'Connection': 'keep-alive'
+  });
+  
+  const userId = req.params.userId;
+  const gmailAdapter = await getGmailAdapterForUser(userId);
+  
+  // Start sync process
+  const syncInterval = setInterval(async () => {
+    try {
+      const lastHistoryId = await getLastHistoryId(userId);
+      const syncResult = await gmailAdapter.processSync({
+        startHistoryId: lastHistoryId
+      });
+      
+      // Send real-time updates
+      res.write(`data: ${JSON.stringify({
+        type: 'sync_complete',
+        addedEmails: syncResult.addedEmails.length,
+        deletedEmails: syncResult.deletedEmailIds.length,
+        updatedEmails: syncResult.updatedEmails.length,
+        timestamp: new Date()
+      })}\n\n`);
+      
+      // Update stored history ID
+      await saveHistoryId(userId, syncResult.newHistoryId);
+      
+    } catch (error) {
+      res.write(`data: ${JSON.stringify({
+        type: 'sync_error',
+        error: error.message,
+        timestamp: new Date()
+      })}\n\n`);
+    }
+  }, 30000); // Check every 30 seconds
+  
+  // Cleanup on client disconnect
+  req.on('close', () => {
+    clearInterval(syncInterval);
+  });
+});
+
+// Manual sync trigger
+app.post('/api/sync/:userId', async (req, res) => {
+  try {
+    const userId = req.params.userId;
+    const gmailAdapter = await getGmailAdapterForUser(userId);
+    const lastHistoryId = await getLastHistoryId(userId);
+    
+    const syncResult = await gmailAdapter.processSync({
+      startHistoryId: lastHistoryId,
+      maxResults: 100
+    });
+    
+    await saveHistoryId(userId, syncResult.newHistoryId);
+    
+    res.json({
+      success: true,
+      addedEmails: syncResult.addedEmails.length,
+      deletedEmails: syncResult.deletedEmailIds.length,
+      updatedEmails: syncResult.updatedEmails.length,
+      newHistoryId: syncResult.newHistoryId
+    });
+    
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      error: error.message
+    });
+  }
+});
+```
+
+### Configuration Options
+
+```typescript
+interface SyncOptions {
+  startHistoryId?: string;           // Start from specific history ID
+  maxResults?: number;               // Max history records per request (default: 100)
+  labelIds?: string[];               // Filter by specific labels
+  includeDeleted?: boolean;          // Include deleted messages (default: true)
+}
+
+interface PushNotificationConfig {
+  topicName: string;                 // Google Cloud Pub/Sub topic
+  webhookUrl: string;                // Your webhook endpoint
+  labelIds?: string[];               // Optional: only watch specific labels
+  labelFilterAction?: 'include' | 'exclude'; // How to apply label filter
+}
+```
+
+### Error Handling & Recovery
+
+```typescript
+async function robustSync(gmailAdapter: GmailAdapter, lastHistoryId: string) {
+  try {
+    return await gmailAdapter.processSync({
+      startHistoryId: lastHistoryId
+    });
+  } catch (error) {
+    // Handle expired history ID
+    if (error.message.includes('too old or invalid')) {
+      console.log('History ID expired, starting fresh sync...');
+      const newHistoryId = await gmailAdapter.getCurrentHistoryId();
+      
+      // You might want to do a full re-sync here
+      await performFullResync(gmailAdapter);
+      
+      return {
+        processedHistoryRecords: 0,
+        addedEmails: [],
+        deletedEmailIds: [],
+        updatedEmails: [],
+        newHistoryId,
+        hasMoreChanges: false
+      };
+    }
+    
+    // Handle rate limiting
+    if (error.message.includes('Rate limit')) {
+      console.log('Rate limited, waiting before retry...');
+      await new Promise(resolve => setTimeout(resolve, 60000));
+      return robustSync(gmailAdapter, lastHistoryId);
+    }
+    
+    throw error;
+  }
+}
+```
+
+### Performance Considerations
+
+- **History Retention**: Gmail history is retained for ~1 week. Store history IDs promptly
+- **Rate Limits**: Gmail API has quotas. Implement exponential backoff for retries
+- **Batch Processing**: Process sync results in batches to avoid overwhelming your database
+- **Push Notifications**: Expire after 7 days. Set up monitoring to renew automatically
+
+### Key Benefits
+
+✅ **Real-time Sync** - Get notified instantly when emails change  
+✅ **Efficient** - Only fetch changes, not all emails  
+✅ **Scalable** - Handle multiple users with separate sync states  
+✅ **Resilient** - Built-in error handling and recovery  
+✅ **Flexible** - Works with webhooks or polling patterns  
+
+---
+
 ## API Reference
 
 ### Common Interfaces
@@ -824,6 +1386,18 @@ async authenticate(): Promise<void>
 
 // Fetch emails
 async fetchEmails(options: FetchOptions): Promise<PaginatedEmailsResponse>
+
+// Streaming methods
+streamEmails(options: EmailStreamOptions): AsyncGenerator<NormalizedEmail[], void, unknown>
+fetchEmailsStream(options: EmailStreamOptions, callbacks: EmailStreamCallbacks): Promise<void>
+
+// Sync capabilities
+getCurrentHistoryId(): Promise<string>
+getHistory(startHistoryId: string, options?: SyncOptions): Promise<HistoryResponse>
+getEmailById(id: string): Promise<NormalizedEmail | null>
+setupPushNotifications(config: PushNotificationConfig): Promise<PushNotificationSetup>
+stopPushNotifications(): Promise<void>
+processSync(options?: SyncOptions): Promise<SyncResult>
 ```
 
 ### OutlookAdapter
