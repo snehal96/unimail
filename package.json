@@ -1,5 +1,5 @@
 {
-  "name": "unimail",
+  "name": "@snehal96/unimail",
   "version": "1.0.0",
   "description": "Unified email fetching & document extraction layer for modern web apps",
   "main": "dist/src/index.js",
@@ -42,7 +42,7 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "https://github.com/snehal96/unimail.git"
+    "url": "git+https://github.com/snehal96/unimail.git"
   },
   "homepage": "https://github.com/snehal96/unimail#",
   "bugs": {
@@ -73,5 +73,10 @@
     "dist",
     "LICENSE",
     "README.md"
-  ]
+  ],
+  "directories": {
+    "doc": "docs",
+    "example": "examples",
+    "test": "tests"
+  }
 }
