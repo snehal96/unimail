@@ -121,13 +121,13 @@ To build an open-source Node.js library that abstracts email integration across 
 
 ## Install
 ```bash
-npm install unimail
+npm install @snehal96/unimail
 ````
 
 ## Quick Start (Gmail)
 
 ```ts
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 
 const gmail = new GmailAdapter({
   clientId: process.env.GOOGLE_CLIENT_ID,

@@ -49,9 +49,9 @@ Unimail is an open-source Node.js library that provides a standardized way to fe
 ## Installation
 
 ```bash
-npm install unimail
+npm install @snehal96/unimail
 # or
-yarn add unimail
+yarn add @snehal96/unimail
 ```
 
 ---
@@ -78,7 +78,7 @@ yarn add unimail
 #### Method 1: Using Built-in OAuth Flow (Recommended)
 
 ```typescript
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -102,7 +102,7 @@ authenticateGmail();
 #### Method 2: Using Existing Refresh Token
 
 ```typescript
-import { GmailAdapter, FetchOptions } from 'unimail';
+import { GmailAdapter, FetchOptions } from '@snehal96/unimail';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -162,7 +162,7 @@ fetchGmailEmails();
 #### OAuth Flow Example
 
 ```typescript
-import { OutlookAdapter } from 'unimail';
+import { OutlookAdapter } from '@snehal96/unimail';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -190,7 +190,7 @@ authenticateOutlook();
 #### Fetching Outlook Emails
 
 ```typescript
-import { OutlookAdapter, FetchOptions } from 'unimail';
+import { OutlookAdapter, FetchOptions } from '@snehal96/unimail';
 import dotenv from 'dotenv';
 
 dotenv.config();
@@ -227,7 +227,7 @@ fetchOutlookEmails();
 Perfect for Yahoo Mail, custom mail servers, and other IMAP-compatible providers:
 
 ```typescript
-import { ImapAdapter } from 'unimail';
+import { ImapAdapter } from '@snehal96/unimail';
 
 async function fetchImapEmails() {
   const imapAdapter = new ImapAdapter({
@@ -263,7 +263,7 @@ fetchImapEmails();
 ### Working with Gmail Labels
 
 ```typescript
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 
 async function workWithLabels() {
   const gmailAdapter = new GmailAdapter();
@@ -299,7 +299,7 @@ async function workWithLabels() {
 ### Working with Outlook Categories
 
 ```typescript
-import { OutlookAdapter } from 'unimail';
+import { OutlookAdapter } from '@snehal96/unimail';
 
 async function workWithCategories() {
   const outlookAdapter = new OutlookAdapter();
@@ -370,7 +370,7 @@ async function basicPagination() {
 #### 2. Using PaginationHelper (Recommended)
 
 ```typescript
-import { GmailAdapter, createPaginationHelper } from 'unimail';
+import { GmailAdapter, createPaginationHelper } from '@snehal96/unimail';
 
 async function paginationHelperExample() {
   const gmailAdapter = new GmailAdapter();
@@ -455,7 +455,7 @@ async function processLargeDataset() {
 #### 5. Building Paginated API Responses
 
 ```typescript
-import { PaginationUtils } from 'unimail';
+import { PaginationUtils } from '@snehal96/unimail';
 
 async function buildPaginatedAPI(request: {
   page?: number;
@@ -925,7 +925,7 @@ Gmail sync capabilities enable real-time synchronization with Gmail accounts usi
 ### Quick Start
 
 ```typescript
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 
 const gmailAdapter = new GmailAdapter();
 await gmailAdapter.initialize(credentials);
@@ -1148,7 +1148,7 @@ class GmailSyncService {
 
 ```typescript
 import express from 'express';
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 
 const app = express();
 
@@ -1468,7 +1468,7 @@ async close(): Promise<void>
 For more control over the OAuth flow:
 
 ```typescript
-import { OAuthService, GoogleOAuthProvider, OutlookOAuthProvider } from 'unimail';
+import { OAuthService, GoogleOAuthProvider, OutlookOAuthProvider } from '@snehal96/unimail';
 
 // Google OAuth
 const googleOAuth = new OAuthService(new GoogleOAuthProvider());

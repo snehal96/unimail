@@ -28,7 +28,7 @@ const { emails } = await gmailAdapter.fetchEmails({
 Most memory-efficient approach with simple iteration:
 
 ```typescript
-import { GmailAdapter } from 'unimail';
+import { GmailAdapter } from '@snehal96/unimail';
 
 async function processEmailsStream() {
   const gmailAdapter = new GmailAdapter();
