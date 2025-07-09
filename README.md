@@ -25,11 +25,13 @@ Unimail is an open-source Node.js library that provides a standardized way to fe
     *   Gmail labels and Outlook categories unified as `labels` field
     *   Consistent date, sender, recipient handling
 *   **📄 Enhanced Pagination Support:** 
+    *   **Cross-Provider Compatibility:** Identical pagination API across Gmail, Outlook, and IMAP
     *   Complete pagination with `nextPageToken` for handling large email volumes
-    *   New `PaginationHelper` utility for easy navigation
+    *   New `PaginationHelper` utility for easy navigation and state management
     *   Automatic all-pages fetching with `getAllPages` option
-    *   Cursor-based pagination with metadata (current page, total pages, etc.)
-    *   Async iterators for processing large datasets
+    *   Rich pagination metadata (current page, total pages, navigation flags)
+    *   Async iterators for memory-efficient processing of large datasets
+    *   Format optimization for performance across all providers
 *   **🔍 Advanced Search & Filtering:**
     *   Date range queries (`since`, `before`)
     *   Provider-specific search queries
@@ -329,7 +331,11 @@ async function workWithCategories() {
 
 ### Advanced Pagination
 
-Unimail provides comprehensive pagination support with multiple approaches for different use cases:
+Unimail provides comprehensive pagination support with multiple approaches for different use cases. **All pagination features work identically across Gmail, Outlook, and IMAP adapters**, ensuring consistent behavior regardless of email provider:
+
+#### Cross-Provider Compatibility
+
+All pagination examples below work with any adapter (Gmail, Outlook, IMAP) - simply replace `GmailAdapter` with `OutlookAdapter` or `ImapAdapter` as needed. The API remains identical across all providers.
 
 #### 1. Basic Manual Pagination
 

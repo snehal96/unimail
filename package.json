@@ -2,9 +2,19 @@
   "name": "unimail",
   "version": "1.0.0",
   "description": "Unified email fetching & document extraction layer for modern web apps",
-  "main": "dist/index.js",
-  "types": "dist/index.d.ts",
+  "main": "dist/src/index.js",
+  "types": "dist/src/index.d.ts",
   "type": "module",
+  "exports": {
+    ".": {
+      "import": "./dist/src/index.js",
+      "types": "./dist/src/index.d.ts"
+    },
+    "./interfaces": {
+      "import": "./dist/src/interfaces.js",
+      "types": "./dist/src/interfaces.d.ts"
+    }
+  },
   "ts-node": {
     "esm": true
   },

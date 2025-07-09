@@ -1,7 +1,6 @@
-
 import { google } from 'googleapis';
 import { OAuth2Client } from 'google-auth-library';
-import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces.ts';
+import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces.js';
 
 /**
  * Google-specific OAuth implementation

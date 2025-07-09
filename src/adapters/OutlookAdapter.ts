@@ -1,11 +1,11 @@
 import { Client } from '@microsoft/microsoft-graph-client';
 import { ConfidentialClientApplication } from '@azure/msal-node';
-import { IAdapter, PaginatedEmailsResponse } from './IAdapter.ts';
+import { IAdapter, PaginatedEmailsResponse } from './IAdapter.js';
 import { NormalizedEmail, FetchOptions, OutlookCredentials, Attachment, EmailStreamOptions, EmailStreamCallbacks, EmailStreamProgress } from '../interfaces.js';
-import { EmailParserService } from '../services/EmailParserService.ts';
-import { OAuthService } from '../auth/OAuthService.ts';
-import { OutlookOAuthProvider } from '../auth/providers/OutlookOAuthProvider.ts';
-import { EmailStreamService } from '../services/EmailStreamService.ts';
+import { EmailParserService } from '../services/EmailParserService.js';
+import { OAuthService } from '../auth/OAuthService.js';
+import { OutlookOAuthProvider } from '../auth/providers/OutlookOAuthProvider.js';
+import { EmailStreamService } from '../services/EmailStreamService.js';
 
 // Type definition for graph messages
 interface OutlookMessage {
@@ -256,6 +256,7 @@ export class OutlookAdapter implements IAdapter {
 
   public async fetchEmails(options: FetchOptions): Promise<PaginatedEmailsResponse> {
     this.ensureInitialized();
+    await this.authenticate(); // Ensure token is fresh
 
     const { 
       limit = 10, 
@@ -270,6 +271,34 @@ export class OutlookAdapter implements IAdapter {
       pageSize,
       getAllPages = false
     } = options;
+
+    // Determine the best format strategy based on options
+    let fetchStrategy: 'full' | 'minimal' | 'metadata' = 'full';
+    
+    // If format isn't explicitly specified, infer it based on what the user needs
+    if (!format) {
+      if (!includeBody && !includeAttachments) {
+        fetchStrategy = 'metadata'; // Just need headers
+      } else if (!includeBody || !includeAttachments) {
+        fetchStrategy = 'minimal'; // Need some content but not everything
+      } else {
+        fetchStrategy = 'full'; // Need everything
+      }
+    } else {
+      // Map Gmail-style format options to Outlook strategies
+      switch (format) {
+        case 'metadata':
+          fetchStrategy = 'metadata';
+          break;
+        case 'full':
+          fetchStrategy = 'minimal';
+          break;
+        case 'raw':
+        default:
+          fetchStrategy = 'full';
+          break;
+      }
+    }
 
     // Build Outlook-specific filter
     let filter = '';
@@ -292,17 +321,27 @@ export class OutlookAdapter implements IAdapter {
     }
     
     // Search term (query) is handled differently in Outlook than filter
-    // But we can combine certain search capabilities
     const searchTerm = query || undefined;
     
     try {
       if (getAllPages) {
-        return await this.fetchAllEmailPages(filter, searchTerm, limit, includeBody, includeAttachments);
+        // Show deprecation warning to match Gmail behavior
+        console.warn('Warning: getAllPages option is deprecated and may cause memory issues with large datasets. Consider using streamEmails() instead.');
+        
+        return await this.fetchAllEmailPages(
+          filter, 
+          searchTerm, 
+          limit, 
+          fetchStrategy,
+          includeBody, 
+          includeAttachments
+        );
       } else {
         return await this.fetchEmailPage(
           filter, 
           searchTerm,
           pageSize || limit, 
+          fetchStrategy,
           includeBody, 
           includeAttachments, 
           pageToken
@@ -310,17 +349,30 @@ export class OutlookAdapter implements IAdapter {
       }
     } catch (error) {
       console.error('Error fetching Outlook emails:', error);
-      throw new Error(`Failed to fetch Outlook emails: ${error}`);
+      
+      // Check for specific Microsoft Graph API errors
+      if ((error as any).code === '401' || (error as any).status === 401) {
+        throw new Error(`Outlook authentication error (401). Check your refresh token and API permissions. Original: ${(error as Error).message}`);
+      }
+      if ((error as any).code === 'InvalidAuthenticationToken' || (error as any).message?.includes('InvalidAuthenticationToken')) {
+        throw new Error(`Outlook authentication token is invalid or expired. Please re-authenticate. Original: ${(error as Error).message}`);
+      }
+      if ((error as any).code === 'Forbidden' || (error as any).status === 403) {
+        throw new Error(`Outlook API access forbidden. Check your application permissions for Mail.Read. Original: ${(error as Error).message}`);
+      }
+      
+      throw new Error(`Failed to fetch Outlook emails: ${(error as Error).message}`);
     }
   }
 
   /**
-   * Fetches a single page of emails
+   * Fetches a single page of emails with enhanced format support
    */
   private async fetchEmailPage(
     filter: string,
     searchTerm: string | undefined,
     maxResults: number,
+    fetchStrategy: 'full' | 'minimal' | 'metadata',
     includeBody: boolean,
     includeAttachments: boolean,
     skipToken?: string
@@ -344,17 +396,8 @@ export class OutlookAdapter implements IAdapter {
       messagesRequest = messagesRequest.skipToken(skipToken);
     }
     
-    // Select fields based on what we need
-    let select = ['id', 'conversationId', 'subject', 'from', 'toRecipients', 
-                  'ccRecipients', 'bccRecipients', 'receivedDateTime', 
-                  'hasAttachments', 'internetMessageId', 'importance', 'categories'];
-    
-    if (includeBody) {
-      select.push('body');
-    } else {
-      select.push('bodyPreview'); // Just get the preview if we don't need full body
-    }
-    
+    // Select fields based on fetch strategy and requirements
+    let select = this.buildSelectFields(fetchStrategy, includeBody, includeAttachments);
     messagesRequest = messagesRequest.select(select.join(','));
     
     // Execute the request
@@ -376,10 +419,20 @@ export class OutlookAdapter implements IAdapter {
     for (const message of response.value as OutlookMessage[]) {
       let normalized = this.mapOutlookMessageToNormalized(message);
       
+      // Apply fetch strategy modifications
+      if (fetchStrategy === 'metadata' && !includeBody) {
+        // Remove body content for metadata-only requests
+        normalized.bodyText = undefined;
+        normalized.bodyHtml = undefined;
+      }
+      
       // Fetch attachments if message has any and we are requested to include them
-      if (includeAttachments && message.hasAttachments) {
+      if (includeAttachments && message.hasAttachments && fetchStrategy !== 'metadata') {
         const attachments = await this.fetchAttachments(message.id);
         normalized.attachments = attachments;
+      } else if (!includeAttachments || fetchStrategy === 'metadata') {
+        // Clear attachments but keep count if we have it
+        normalized.attachments = [];
       }
       
       normalizedEmails.push(normalized);
@@ -389,31 +442,35 @@ export class OutlookAdapter implements IAdapter {
       emails: normalizedEmails, 
       nextPageToken: response['@odata.nextLink'] ? 
         this.extractSkipTokenFromNextLink(response['@odata.nextLink']) : 
-        undefined
+        undefined,
+      totalCount: undefined // Microsoft Graph API doesn't provide total count
     };
   }
 
   /**
-   * Fetches all pages of emails up to the specified limit
+   * Fetches all pages of emails up to the specified limit with enhanced format support
    */
   private async fetchAllEmailPages(
     filter: string,
     searchTerm: string | undefined,
     limit: number,
+    fetchStrategy: 'full' | 'minimal' | 'metadata',
     includeBody: boolean,
-    includeAttachments: boolean
+    includeAttachments: boolean,
+    requestPageSize?: number
   ): Promise<PaginatedEmailsResponse> {
     const allEmails: NormalizedEmail[] = [];
     let nextPageToken: string | undefined;
     
-    // Use a reasonable page size (50 is typical for Outlook API)
-    const pageSize = Math.min(limit, 50);
+    // Use a reasonable page size (50 is optimal for Outlook API)
+    const pageSize = requestPageSize || Math.min(limit, 50);
     
     do {
       const response = await this.fetchEmailPage(
         filter, 
         searchTerm, 
         pageSize, 
+        fetchStrategy,
         includeBody, 
         includeAttachments, 
         nextPageToken
@@ -435,10 +492,77 @@ export class OutlookAdapter implements IAdapter {
       emails: limitedEmails,
       // Don't return nextPageToken if we've fetched all pages or reached the limit
       nextPageToken: allEmails.length >= limit ? nextPageToken : undefined,
-      // Outlook API doesn't provide a total count
+      totalCount: undefined // Outlook API doesn't provide a count
     };
   }
-  
+
+  /**
+   * Helper method to build field selection based on fetch strategy
+   */
+  private buildSelectFields(fetchStrategy: 'full' | 'minimal' | 'metadata', includeBody: boolean, includeAttachments: boolean): string[] {
+    // Base fields always needed
+    let select = ['id', 'conversationId', 'subject', 'from', 'toRecipients', 
+                  'ccRecipients', 'bccRecipients', 'receivedDateTime', 
+                  'internetMessageId', 'importance', 'categories'];
+    
+    // Add attachment info if needed
+    if (includeAttachments && fetchStrategy !== 'metadata') {
+      select.push('hasAttachments');
+    }
+    
+    // Add body fields based on strategy and requirements
+    switch (fetchStrategy) {
+      case 'full':
+        if (includeBody) {
+          select.push('body');
+        } else {
+          select.push('bodyPreview');
+        }
+        break;
+      case 'minimal':
+        if (includeBody) {
+          select.push('body');
+        } else {
+          select.push('bodyPreview');
+        }
+        break;
+      case 'metadata':
+        // Only include preview for metadata-only requests
+        select.push('bodyPreview');
+        break;
+    }
+    
+    return select;
+  }
+
+  /**
+   * Helper method to determine fetch strategy from options (similar to Gmail's format detection)
+   */
+  private determineOutlookFetchStrategy(options: EmailStreamOptions): 'full' | 'minimal' | 'metadata' {
+    if (options.format) {
+      switch (options.format) {
+        case 'metadata':
+          return 'metadata';
+        case 'full':
+          return 'minimal';
+        case 'raw':
+        default:
+          return 'full';
+      }
+    }
+    
+    const includeBody = options.includeBody !== false;
+    const includeAttachments = options.includeAttachments !== false;
+    
+    if (!includeBody && !includeAttachments) {
+      return 'metadata';
+    } else if (!includeBody || !includeAttachments) {
+      return 'minimal';
+    } else {
+      return 'full';
+    }
+  }
+
   /**
    * Fetches attachments for a message
    */
@@ -518,12 +642,16 @@ export class OutlookAdapter implements IAdapter {
     // Build Outlook filter and search term from options
     const { filter, searchTerm } = this.buildOutlookQueryFromStreamOptions(options);
     
+    // Determine fetch strategy
+    const fetchStrategy = this.determineOutlookFetchStrategy(options);
+    
     // Create the fetch function for the stream service
     const fetchPageFn = async (pageToken?: string, pageSize?: number) => {
       return await this.fetchEmailPage(
         filter,
         searchTerm,
         pageSize || options.batchSize || 50,
+        fetchStrategy,
         options.includeBody !== false,
         options.includeAttachments !== false,
         pageToken

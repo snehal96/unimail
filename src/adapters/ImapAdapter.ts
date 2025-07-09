@@ -1,6 +1,6 @@
 import { ImapFlow, ImapFlowOptions } from 'imapflow';
-import { EmailParserService } from '../services/EmailParserService.ts';
-import { NormalizedEmail } from '../interfaces.ts';
+import { EmailParserService } from '../services/EmailParserService.js';
+import { NormalizedEmail } from '../interfaces.js';
 
 // Define Unimail-normalized email output
 

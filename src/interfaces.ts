@@ -98,7 +98,7 @@ export interface OutlookCredentials {
 export type AdapterCredentials = GmailCredentials | OutlookCredentials; // | ImapCredentials;
 
 /**
- * @deprecated Use TokenData from auth/interfaces.ts instead.
+ * @deprecated Use TokenData from auth/interfaces instead.
  */
 export interface TokenData {
   accessToken: string;

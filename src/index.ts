@@ -1,15 +1,15 @@
 // Export interfaces
-export * from './interfaces.ts';
+export * from './interfaces.js';
 
 // Export adapters
-export { GmailAdapter } from './adapters/GmailAdapter.ts';
-export { OutlookAdapter } from './adapters/OutlookAdapter.ts';
-export { ImapAdapter } from './adapters/ImapAdapter.ts';
-export type { IAdapter, PaginatedEmailsResponse } from './adapters/IAdapter.ts';
+export { GmailAdapter } from './adapters/GmailAdapter.js';
+export { OutlookAdapter } from './adapters/OutlookAdapter.js';
+export { ImapAdapter } from './adapters/ImapAdapter.js';
+export type { IAdapter, PaginatedEmailsResponse } from './adapters/IAdapter.js';
 
 // Export services if they are meant to be used directly, or internal utility classes
-export { EmailParserService } from './services/EmailParserService.ts'; // Might be internal
-export { EmailStreamService } from './services/EmailStreamService.ts'; // New streaming service
+export { EmailParserService } from './services/EmailParserService.js'; // Might be internal
+export { EmailStreamService } from './services/EmailStreamService.js'; // New streaming service
 
 // Export OAuth functionality with renamed TokenData to avoid naming conflicts
 export {
@@ -32,4 +32,4 @@ export type { TokenData as OAuthTokenData } from './auth/interfaces.js';
 // export { unimail } from './unimail.js';
 
 // Export new pagination utilities
-export * from './utils/PaginationHelper.ts';
+export * from './utils/PaginationHelper.js';

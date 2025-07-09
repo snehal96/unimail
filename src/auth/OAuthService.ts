@@ -1,4 +1,3 @@
-
 import express, { Express, Request, Response } from 'express';
 import http from 'http';
 import open from 'open';
@@ -8,9 +7,9 @@ import {
   TokenData, 
   ITokenStorage,
   OAuthCallbackHandler
-} from './interfaces.ts';
-import { GoogleOAuthProvider } from './providers/GoogleOAuthProvider.ts';
-import { MemoryTokenStorage } from './storage/MemoryTokenStorage.ts';
+} from './interfaces.js';
+import { GoogleOAuthProvider } from './providers/GoogleOAuthProvider.js';
+import { MemoryTokenStorage } from './storage/MemoryTokenStorage.js';
 
 /**
  * Service to manage OAuth flows for different email providers

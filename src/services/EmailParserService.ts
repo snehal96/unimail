@@ -1,5 +1,5 @@
 import { simpleParser, ParsedMail } from 'mailparser';
-import { Attachment, NormalizedEmail } from '../interfaces.ts';
+import { Attachment, NormalizedEmail } from '../interfaces.js';
 
 export class EmailParserService {
   public async parseEmail(

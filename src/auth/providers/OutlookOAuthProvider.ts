@@ -1,5 +1,5 @@
 import { ConfidentialClientApplication } from '@azure/msal-node';
-import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces.ts';
+import { IOAuthProvider, OAuthOptions, OAuthFlowState, TokenData } from '../interfaces.js';
 
 // Add extended interface for Microsoft authentication response type
 interface MsalAuthResponse {
